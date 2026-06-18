@@ -65,27 +65,46 @@ python -m special_days --agent turkey --source events --year 2026
 
 Without a key, the events step is skipped cleanly and you still get holidays.
 
+## Excel output (`.xlsx`)
+
+```bash
+# Writes a real Excel file with the four columns, a frozen header and auto-filter
+python -m special_days --agent both --year 2026 --format xlsx --output special_days_2026.xlsx
+```
+
+```
+Wrote 520 special date(s) to special_days_2026.xlsx
+```
+
+If `--output` is omitted, the file defaults to `special_days_<year>.xlsx`. The
+Excel writer is built on the standard library too (no `openpyxl`, no
+`pip install`), so this still works out of the box.
+
 ## CLI
 
 ```
 python -m special_days [options]
 
---agent       turkey | international | both     (default: both)
---year        calendar year                     (default: 2026)
---countries   CSV ISO codes for the intl agent  (default: DE,GB,NL,FR,US)
---source      holidays | events | all           (default: all)
---format      table | csv | json                (default: table)
---limit       cap rows printed (after sorting by date)
---verbose     log progress / skipped sources to stderr
+--agent        turkey | international | both     (default: both)
+--year         calendar year                     (default: 2026)
+--countries    CSV ISO codes for the intl agent  (default: DE,GB,NL,FR,US)
+--source       holidays | events | all           (default: all)
+--format       table | csv | json | xlsx         (default: table)
+--output, -o   write to a file instead of stdout (xlsx always writes a file)
+--limit        cap rows printed (after sorting by date)
+--verbose      log progress / skipped sources to stderr
 ```
 
 Examples:
 
 ```bash
-# Everything both agents can find, as CSV
-python -m special_days --agent both --year 2026 --format csv
+# Excel deliverable for both agents
+python -m special_days --agent both --year 2026 --format xlsx -o special_days_2026.xlsx
 
-# International holidays for chosen markets
+# Everything both agents can find, as CSV to a file
+python -m special_days --agent both --year 2026 --format csv -o feed.csv
+
+# International holidays for chosen markets, to the terminal
 python -m special_days --agent international --countries DE,GB,AE --source holidays
 ```
 
@@ -116,6 +135,7 @@ special_days/
     ticketmaster.py events   (Ticketmaster Discovery)
   agents.py        TurkeyAgent, InternationalAgent
   output.py        table / csv / json renderers
+  xlsx_writer.py   dependency-free Excel (.xlsx) writer
   cli.py           argument parsing + orchestration
 tests/             unittest suite (no network)
 ```
