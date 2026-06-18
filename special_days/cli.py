@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import sys
 from datetime import date
 
@@ -139,6 +140,12 @@ def _xlsx_path(args: argparse.Namespace) -> str:
     return f"special_days_{args.year}.xlsx"
 
 
+def _ensure_parent(path: str) -> None:
+    parent = os.path.dirname(path)
+    if parent:
+        os.makedirs(parent, exist_ok=True)
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -153,12 +160,14 @@ def main(argv: list[str] | None = None) -> int:
         from .xlsx_writer import write_xlsx
 
         path = _xlsx_path(args)
+        _ensure_parent(path)
         write_xlsx(rows, path)
         print(f"Wrote {len(rows)} special date(s) to {path}")
         return 0
 
     text = render(rows, args.format)
     if args.output:
+        _ensure_parent(args.output)
         with open(args.output, "w", encoding="utf-8") as handle:
             handle.write(text + "\n")
         print(f"Wrote {len(rows)} special date(s) to {args.output}")

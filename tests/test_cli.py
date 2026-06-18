@@ -1,3 +1,5 @@
+import os
+import tempfile
 import unittest
 from datetime import date
 from unittest import mock
@@ -28,6 +30,15 @@ class CollectTest(unittest.TestCase):
     def test_negative_limit_is_rejected(self):
         with self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["--limit", "-3"])
+
+    def test_output_creates_missing_parent_dirs(self):
+        rows = [holiday("Yılbaşı", "TR")]
+        with tempfile.TemporaryDirectory() as tmp:
+            out = os.path.join(tmp, "nested", "dir", "feed.csv")
+            argv = ["--agent", "turkey", "--source", "holidays", "--format", "csv", "-o", out]
+            with mock.patch("special_days.cli.collect", return_value=rows):
+                cli.main(argv)
+            self.assertTrue(os.path.isfile(out))
 
 
 if __name__ == "__main__":
