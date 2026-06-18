@@ -1,0 +1,15 @@
+.git
+.gitignore
+.venv
+venv
+__pycache__
+*/__pycache__
+*.pyc
+.env
+*.xlsx
+out/
+tests
+README.md
+Makefile
+.dockerignore
+Dockerfile

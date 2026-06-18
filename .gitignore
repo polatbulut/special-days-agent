@@ -20,6 +20,7 @@ env/
 
 # Generated output files
 *.xlsx
+out/
 
 # OS
 .DS_Store
