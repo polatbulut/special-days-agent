@@ -69,9 +69,18 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--format",
-        choices=["table", "csv", "json"],
+        choices=["table", "csv", "json", "xlsx"],
         default="table",
-        help="Output format (default: table).",
+        help="Output format (default: table). 'xlsx' writes an Excel file.",
+    )
+    parser.add_argument(
+        "-o",
+        "--output",
+        default=None,
+        help=(
+            "Write to this file instead of stdout. For --format xlsx a file is "
+            "always written (default: special_days_<year>.xlsx if omitted)."
+        ),
     )
     parser.add_argument(
         "--limit",
@@ -124,6 +133,12 @@ def collect(args: argparse.Namespace) -> list[SpecialDate]:
     return results
 
 
+def _xlsx_path(args: argparse.Namespace) -> str:
+    if args.output:
+        return args.output if args.output.lower().endswith(".xlsx") else f"{args.output}.xlsx"
+    return f"special_days_{args.year}.xlsx"
+
+
 def main(argv: list[str] | None = None) -> int:
     args = build_parser().parse_args(argv)
     logging.basicConfig(
@@ -133,7 +148,22 @@ def main(argv: list[str] | None = None) -> int:
     load_dotenv()
 
     rows = collect(args)
-    print(render(rows, args.format))
+
+    if args.format == "xlsx":
+        from .xlsx_writer import write_xlsx
+
+        path = _xlsx_path(args)
+        write_xlsx(rows, path)
+        print(f"Wrote {len(rows)} special date(s) to {path}")
+        return 0
+
+    text = render(rows, args.format)
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as handle:
+            handle.write(text + "\n")
+        print(f"Wrote {len(rows)} special date(s) to {args.output}")
+    else:
+        print(text)
     return 0
 
 
