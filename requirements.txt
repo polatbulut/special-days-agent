@@ -1,0 +1,5 @@
+# This MVP intentionally has NO third-party runtime dependencies — it runs on
+# the Python 3.9+ standard library alone (urllib + json), so it works out of
+# the box with no `pip install` step.
+#
+# Tests use the stdlib `unittest` runner (`python -m unittest`).
