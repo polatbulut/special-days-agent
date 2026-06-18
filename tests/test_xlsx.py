@@ -1,19 +1,12 @@
 import os
 import tempfile
 import unittest
-import zipfile
 from datetime import date
 
-from special_days.models import SpecialDate
-from special_days.xlsx_writer import _col, write_xlsx
+from openpyxl import load_workbook
 
-REQUIRED_PARTS = [
-    "[Content_Types].xml",
-    "_rels/.rels",
-    "xl/workbook.xml",
-    "xl/_rels/workbook.xml.rels",
-    "xl/worksheets/sheet1.xml",
-]
+from special_days.models import SpecialDate
+from special_days.xlsx_writer import write_xlsx
 
 
 def make(event, city, start="2026-07-01", end=None):
@@ -23,45 +16,40 @@ def make(event, city, start="2026-07-01", end=None):
 
 
 class XlsxWriterTest(unittest.TestCase):
-    def _write_and_read(self, rows):
+    def _write_and_load(self, rows):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "out.xlsx")
             write_xlsx(rows, path)
-            self.assertTrue(zipfile.is_zipfile(path))
-            with zipfile.ZipFile(path) as archive:
-                names = set(archive.namelist())
-                sheet = archive.read("xl/worksheets/sheet1.xml").decode("utf-8")
-        return names, sheet
+            workbook = load_workbook(path)
+        return workbook.active
 
-    def test_valid_zip_with_required_parts(self):
-        names, _ = self._write_and_read([make("Tarkan Live", "İstanbul")])
-        for part in REQUIRED_PARTS:
-            self.assertIn(part, names)
+    def test_sheet_name_and_bold_header(self):
+        sheet = self._write_and_load([make("Tarkan Live", "İstanbul")])
+        self.assertEqual(sheet.title, "Special Dates")
+        self.assertEqual(
+            [c.value for c in sheet[1]], ["Event", "Start date", "End date", "City"]
+        )
+        self.assertTrue(all(c.font.bold for c in sheet[1]))
 
-    def test_header_and_rows_present(self):
-        _, sheet = self._write_and_read(
+    def test_rows_have_real_dates_and_unicode(self):
+        sheet = self._write_and_load(
             [make("Tarkan Live", "İstanbul", "2026-07-15", "2026-07-16")]
         )
-        self.assertIn("Event", sheet)  # header
-        self.assertIn("Tarkan Live", sheet)
-        self.assertIn("İstanbul", sheet)  # unicode preserved
-        self.assertIn("2026-07-15", sheet)
-        self.assertIn("2026-07-16", sheet)
+        self.assertEqual(sheet["A2"].value, "Tarkan Live")
+        self.assertEqual(sheet["D2"].value, "İstanbul")  # unicode preserved
+        start = sheet["B2"].value  # real date cell, not text
+        self.assertEqual((start.year, start.month, start.day), (2026, 7, 15))
+        self.assertEqual(sheet["B2"].number_format, "yyyy-mm-dd")
 
-    def test_escapes_xml_special_chars(self):
-        _, sheet = self._write_and_read([make("Rock & Roll <Live>", "İzmir")])
-        self.assertIn("Rock &amp; Roll &lt;Live&gt;", sheet)
-        self.assertNotIn("<Live>", sheet)
+    def test_freeze_panes_and_autofilter(self):
+        sheet = self._write_and_load([make("A", "X"), make("B", "Y")])
+        self.assertEqual(sheet.freeze_panes, "A2")
+        self.assertEqual(sheet.auto_filter.ref, "A1:D3")  # header + 2 rows
 
     def test_empty_rows_still_valid(self):
-        names, sheet = self._write_and_read([])
-        self.assertIn("xl/worksheets/sheet1.xml", names)
-        self.assertIn("Event", sheet)  # header still written
-
-    def test_column_letters(self):
-        self.assertEqual(_col(1), "A")
-        self.assertEqual(_col(4), "D")
-        self.assertEqual(_col(27), "AA")
+        sheet = self._write_and_load([])
+        self.assertEqual([c.value for c in sheet[1]], ["Event", "Start date", "End date", "City"])
+        self.assertEqual(sheet.max_row, 1)  # header only
 
 
 if __name__ == "__main__":
