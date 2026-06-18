@@ -30,13 +30,18 @@ Two collector agents share one canonical record and one output:
 
 ## Quick start
 
-No installation and no API key required for holidays — it runs on the Python
-3.9+ standard library alone:
+Set up the virtual environment, then run. Holidays need no API key:
 
 ```bash
+python3 -m venv .venv
+. .venv/bin/activate
+pip install -r requirements.txt
+
 # Turkey public holidays for 2026
 python -m special_days --agent turkey --source holidays --year 2026
 ```
+
+(Or use the Makefile: `make run ARGS="--agent turkey --source holidays"`.)
 
 ```
 Event                                    Start date  End date    City
@@ -77,8 +82,8 @@ Wrote 520 special date(s) to special_days_2026.xlsx
 ```
 
 If `--output` is omitted, the file defaults to `special_days_<year>.xlsx`. The
-Excel writer is built on the standard library too (no `openpyxl`, no
-`pip install`), so this still works out of the box.
+file has a bold, frozen header row, an auto-filter and real date cells (built
+with `openpyxl`). Missing parent directories are created automatically.
 
 ## CLI
 
@@ -108,6 +113,22 @@ python -m special_days --agent both --year 2026 --format csv -o feed.csv
 python -m special_days --agent international --countries DE,GB,AE --source holidays
 ```
 
+## Docker
+
+```bash
+docker build -t special-days-agent .
+
+# holidays (no key needed)
+docker run --rm special-days-agent --agent turkey --source holidays --year 2026
+
+# events + Excel: pass the key via --env-file and mount ./out for the file
+mkdir -p out
+docker run --rm --env-file .env -v "$PWD/out:/app/out" special-days-agent \
+    --agent both --year 2026 --format xlsx -o out/special_days_2026.xlsx
+```
+
+Or via the Makefile: `make docker-run ARGS="--agent both --format xlsx -o out/special_days_2026.xlsx"`.
+
 ## Canonical record
 
 Every source maps into one `SpecialDate` (see [`special_days/models.py`](special_days/models.py)).
@@ -135,14 +156,19 @@ special_days/
     ticketmaster.py events   (Ticketmaster Discovery)
   agents.py        TurkeyAgent, InternationalAgent
   output.py        table / csv / json renderers
-  xlsx_writer.py   dependency-free Excel (.xlsx) writer
+  xlsx_writer.py   Excel (.xlsx) writer (openpyxl)
   cli.py           argument parsing + orchestration
 tests/             unittest suite (no network)
+Dockerfile         container image
+Makefile           venv + Docker convenience targets
+requirements.txt   runtime dependencies (openpyxl)
 ```
 
 ## Tests
 
 ```bash
+make test          # creates the venv if needed, then runs the suite
+# ...or, with the venv active:
 python -m unittest discover -s tests
 ```
 
