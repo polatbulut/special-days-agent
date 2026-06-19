@@ -74,13 +74,15 @@ Without a key the events step is skipped cleanly and you still get holidays.
 ## Excel output (`.xlsx`)
 
 ```bash
-python -m special_days --agent both --format xlsx -o out/special_days.xlsx
+# A .xlsx output path implies --format xlsx (no need to pass it)
+python -m special_days --agent both -o out/special_days.xlsx
 ```
 
-The file has the six columns, a bold/frozen header, an auto-filter, real Excel
-date cells and a numeric impact column (built with `openpyxl`). Missing parent
-directories are created automatically. If `--output` is omitted it defaults to
-`special_days_<start>_<end>.xlsx`.
+The file has a bold/frozen header, an auto-filter, real Excel date cells and a
+numeric impact column (built with `openpyxl`). The format is inferred from the
+output extension (`.xlsx`/`.csv`/`.json`); pass `--format` to override. Missing
+parent directories are created automatically. If `--output` is omitted, `--format
+xlsx` writes `special_days_<start>_<end>.xlsx`.
 
 ## Scheduling
 
@@ -98,7 +100,7 @@ python -m special_days [options]
 --months              window length in months          (default: 12)
 --countries           CSV ISO codes for the intl agent  (default: DE,GB,NL,FR,US)
 --source              holidays | events | all           (default: all)
---format              table | csv | json | xlsx         (default: table)
+--format              table | csv | json | xlsx         (default: inferred from -o, else table)
 --output, -o          write to a file instead of stdout (xlsx always writes a file)
 --catchment-km        nearest-airport radius in km      (default: 150)
 --max-event-span-days drop events longer than this; 0 = off (default: 30)

@@ -45,6 +45,25 @@ class CollectTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["--concurrency", "0"])
 
+
+class ResolveFormatTest(unittest.TestCase):
+    def _args(self, argv):
+        return cli.build_parser().parse_args(argv)
+
+    def test_infers_format_from_extension(self):
+        self.assertEqual(cli._resolve_format(self._args(["-o", "out/feed.xlsx"])), "xlsx")
+        self.assertEqual(cli._resolve_format(self._args(["-o", "x.csv"])), "csv")
+        self.assertEqual(cli._resolve_format(self._args(["-o", "x.json"])), "json")
+
+    def test_unknown_extension_defaults_to_table(self):
+        self.assertEqual(cli._resolve_format(self._args(["-o", "x.txt"])), "table")
+
+    def test_explicit_format_wins_over_extension(self):
+        self.assertEqual(cli._resolve_format(self._args(["--format", "csv", "-o", "x.xlsx"])), "csv")
+
+    def test_no_output_defaults_to_table(self):
+        self.assertEqual(cli._resolve_format(self._args([])), "table")
+
     def test_impact_scorer_choice_validated(self):
         with self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["--impact-scorer", "bogus"])

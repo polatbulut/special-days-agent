@@ -103,8 +103,8 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--format",
         choices=["table", "csv", "json", "xlsx"],
-        default="table",
-        help="Output format (default: table). 'xlsx' writes an Excel file.",
+        default=None,
+        help="Output format (default: inferred from --output extension, else table).",
     )
     parser.add_argument(
         "-o",
@@ -199,6 +199,18 @@ def collect(args: argparse.Namespace, start: date, end: date) -> list[SpecialDat
     return list(dict.fromkeys(results))
 
 
+_FORMAT_BY_EXT = {".xlsx": "xlsx", ".csv": "csv", ".json": "json"}
+
+
+def _resolve_format(args: argparse.Namespace) -> str:
+    """Explicit --format wins; otherwise infer from the --output extension."""
+    if args.format:
+        return args.format
+    if args.output:
+        return _FORMAT_BY_EXT.get(os.path.splitext(args.output)[1].lower(), "table")
+    return "table"
+
+
 def _xlsx_path(args: argparse.Namespace, start: date, end: date) -> str:
     if args.output:
         return args.output if args.output.lower().endswith(".xlsx") else f"{args.output}.xlsx"
@@ -248,21 +260,22 @@ def main(argv: list[str] | None = None) -> int:
     if args.limit is not None:
         rows = rows[: args.limit]
 
-    if args.format == "xlsx":
+    fmt = _resolve_format(args)
+    if fmt == "xlsx":
         from .xlsx_writer import write_xlsx
 
         path = _xlsx_path(args, start, end)
         _ensure_parent(path)
         write_xlsx(rows, path)
-        print(f"Wrote {len(rows)} special date(s) to {path}")
+        print(f"Wrote {len(rows)} special date(s) to {path} (xlsx)")
         return 0
 
-    text = render(rows, args.format)
+    text = render(rows, fmt)
     if args.output:
         _ensure_parent(args.output)
         with open(args.output, "w", encoding="utf-8") as handle:
             handle.write(text + "\n")
-        print(f"Wrote {len(rows)} special date(s) to {args.output}")
+        print(f"Wrote {len(rows)} special date(s) to {args.output} ({fmt})")
     else:
         print(text)
     return 0
