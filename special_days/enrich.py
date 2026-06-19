@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import dataclasses
 import math
+from concurrent.futures import ThreadPoolExecutor
 
 from . import curve
 from .bridge import compute_bridge
@@ -76,30 +77,55 @@ def drop_long_events(
     return kept
 
 
+def _map_airport(record: SpecialDate, catchment_km: float) -> SpecialDate:
+    iata: str | None = None
+    distance: float | None = None
+    if record.lat is not None and record.lon is not None:
+        match = nearest_airport(record.lat, record.lon, catchment_km)
+        if match is not None:
+            iata, distance = match[0], round(match[1], 1)
+    return dataclasses.replace(record, nearest_airport=iata, airport_distance_km=distance)
+
+
+def _score_all(records: list[SpecialDate], scorer: Scorer, concurrency: int) -> list[int]:
+    """Score every record, preserving order.
+
+    Runs the scorer concurrently when ``concurrency > 1`` — useful for the
+    I/O-bound LLM scorers (one HTTP request per record). The heuristic path is
+    unaffected (``concurrency <= 1`` runs plainly, no threads). The first error
+    aborts the run.
+    """
+    if concurrency <= 1 or len(records) <= 1:
+        return [scorer.score(record) for record in records]
+    with ThreadPoolExecutor(max_workers=concurrency) as executor:
+        return list(executor.map(scorer.score, records))  # ordered; re-raises on failure
+
+
 def enrich(
     records: list[SpecialDate],
     catchment_km: float = DEFAULT_CATCHMENT_KM,
     scorer: Scorer | None = None,
+    concurrency: int = 1,
 ) -> list[SpecialDate]:
-    """Return copies of ``records`` with airport, score, bridge and curve fields."""
+    """Return copies of ``records`` with airport, score, bridge and curve fields.
+
+    The scoring step (the costly one for LLM scorers) can run with up to
+    ``concurrency`` parallel requests; airport mapping and bridge/curve building
+    stay sequential (cheap CPU work).
+    """
     if scorer is None:
         scorer = HeuristicScorer()
 
+    # 1) airport mapping — must precede scoring (prompt + heuristic use it).
+    mapped = [_map_airport(record, catchment_km) for record in records]
+
+    # 2) scoring — the expensive step for LLM scorers; optionally concurrent.
+    peaks = _score_all(mapped, scorer, concurrency)
+
+    # 3) bridges + per-day curves.
     enriched: list[SpecialDate] = []
-    for record in records:
-        iata: str | None = None
-        distance: float | None = None
-        if record.lat is not None and record.lon is not None:
-            match = nearest_airport(record.lat, record.lon, catchment_km)
-            if match is not None:
-                iata, distance = match[0], round(match[1], 1)
-
-        # Airport must be set before scoring (the heuristic reads the distance).
-        record = dataclasses.replace(record, nearest_airport=iata, airport_distance_km=distance)
-
-        peak = scorer.score(record)
+    for record, peak in zip(mapped, peaks):
         bridge_start, bridge_end = compute_bridge(record)
-
         enriched.append(
             dataclasses.replace(
                 record,

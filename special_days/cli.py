@@ -145,6 +145,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Override the LLM model (default: gpt-5-mini for openai; VLLM_MODEL for vllm).",
     )
     parser.add_argument(
+        "--concurrency",
+        type=_positive_int,
+        default=None,
+        help="Parallel LLM scoring requests (default: 8 for openai/vllm, 1 for heuristic).",
+    )
+    parser.add_argument(
         "--limit",
         type=_non_negative_int,
         default=None,
@@ -231,9 +237,13 @@ def main(argv: list[str] | None = None) -> int:
     start, end = resolve_window(args.start, args.months)
     logging.getLogger(__name__).info("Collecting window %s -> %s", start, end)
 
+    concurrency = args.concurrency
+    if concurrency is None:
+        concurrency = 1 if args.impact_scorer == "heuristic" else 8
+
     rows = collect(args, start, end)
     rows = drop_long_events(rows, args.max_event_span_days)
-    rows = enrich(rows, catchment_km=args.catchment_km, scorer=scorer)
+    rows = enrich(rows, catchment_km=args.catchment_km, scorer=scorer, concurrency=concurrency)
     rows.sort(key=SpecialDate.sort_key)
     if args.limit is not None:
         rows = rows[: args.limit]
