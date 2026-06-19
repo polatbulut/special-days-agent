@@ -1,8 +1,8 @@
 """Render collected :class:`SpecialDate` records in the requested format.
 
-The headline output is eight columns:
+The headline output is nine columns:
 
-    Event — Start date — End date — City — Nearest airport — Impact
+    Event — Start date — End date — City — Source — Nearest airport — Impact
     — Bridge start — Bridge end
 
 csv/xlsx/json additionally carry the two per-day weight lists.
@@ -17,7 +17,7 @@ import json
 from .models import SpecialDate
 
 HEADERS = (
-    "Event", "Start date", "End date", "City", "Nearest airport", "Impact",
+    "Event", "Start date", "End date", "City", "Source", "Nearest airport", "Impact",
     "Bridge start", "Bridge end",
 )
 
@@ -45,7 +45,7 @@ def render_csv(rows: list[SpecialDate]) -> str:
     buffer = io.StringIO()
     writer = csv.writer(buffer)
     writer.writerow([
-        "event", "start_date", "end_date", "city", "nearest_airport", "impact",
+        "event", "start_date", "end_date", "city", "source", "nearest_airport", "impact",
         "bridge_start", "bridge_end", "impact_by_day", "impact_by_day_bridge",
     ])
     for r in rows:

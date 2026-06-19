@@ -10,12 +10,12 @@ from datetime import date
 class SpecialDate:
     """One special date.
 
-    The headline output is eight columns:
+    The headline output is nine columns:
 
-        Event — Start date — End date — City — Nearest airport — Impact
-        — Bridge start — Bridge end
+        Event — Start date — End date — City — Source — Nearest airport
+        — Impact — Bridge start — Bridge end
 
-    The first four are the original business ask; ``nearest_airport``,
+    The first four are the original business ask; ``source``, ``nearest_airport``,
     ``impact_score`` and the köprü ``bridge_*`` / per-day ``impact_by_day*``
     fields come from the enrichment stage. The remaining fields (``category``,
     ``country``, ``source``, ``lat``/``lon``, ``airport_distance_km``) aid
@@ -49,13 +49,14 @@ class SpecialDate:
     def sort_key(self) -> tuple[date, str]:
         return (self.start_date, self.event.lower())
 
-    def core_row(self) -> tuple[str, str, str, str, str, str, str, str]:
-        """The eight headline fields as strings (no per-day JSON lists)."""
+    def core_row(self) -> tuple[str, str, str, str, str, str, str, str, str]:
+        """The nine headline fields as strings (no per-day JSON lists)."""
         return (
             self.event,
             self.start_date.isoformat(),
             self.end_date.isoformat(),
             self.city,
+            self.source,
             self.nearest_airport or "",
             "" if self.impact_score is None else str(self.impact_score),
             self.bridge_start.isoformat() if self.bridge_start else "",

@@ -1,9 +1,9 @@
 """Excel (``.xlsx``) writer, built on openpyxl.
 
-Produces a single "Special Dates" sheet: the eight headline columns (Event,
-Start date, End date, City, Nearest airport, Impact, Bridge start, Bridge end)
-plus two per-day weight columns (Impact by day, Impact by day (bridge)) carried
-as JSON strings. Bold + frozen header, auto-filter, real Excel date cells.
+Produces a single "Special Dates" sheet: the nine headline columns (Event,
+Start date, End date, City, Source, Nearest airport, Impact, Bridge start,
+Bridge end) plus two per-day weight columns (Impact by day, Impact by day
+(bridge)) as JSON strings. Bold + frozen header, auto-filter, real date cells.
 """
 
 from __future__ import annotations
@@ -14,10 +14,10 @@ from .models import SpecialDate
 from .output import HEADERS
 
 _JSON_HEADERS = ["Impact by day", "Impact by day (bridge)"]
-_DATE_COLUMNS = (2, 3, 7, 8)  # Start, End, Bridge start, Bridge end
+_DATE_COLUMNS = (2, 3, 8, 9)  # Start, End, Bridge start, Bridge end
 _COLUMN_WIDTHS = {
-    "A": 46, "B": 12, "C": 12, "D": 20, "E": 15, "F": 8,
-    "G": 12, "H": 12, "I": 58, "J": 58,
+    "A": 44, "B": 12, "C": 12, "D": 20, "E": 14, "F": 15, "G": 8,
+    "H": 12, "I": 12, "J": 58, "K": 58,
 }
 
 
@@ -43,6 +43,7 @@ def write_xlsx(rows: list[SpecialDate], path: str) -> None:
                 sd.start_date,  # real date cell
                 sd.end_date,  # real date cell
                 sd.city,
+                sd.source,
                 sd.nearest_airport or "",
                 sd.impact_score,  # numeric cell
                 sd.bridge_start,  # real date cell

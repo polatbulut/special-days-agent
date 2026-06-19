@@ -140,8 +140,9 @@ Or via the Makefile: `make docker-run ARGS="--agent both --format xlsx -o out/sp
 ## Canonical record, bridges & impact
 
 Every source maps into one `SpecialDate` (see [`special_days/models.py`](special_days/models.py)).
-Output columns: Event, Start date, End date, City, Nearest airport, Impact,
-Bridge start, Bridge end — plus two per-day weight lists (csv/xlsx/json).
+Output columns: Event, Start date, End date, City, Source (nager/diyanet/meb/
+ticketmaster), Nearest airport, Impact, Bridge start, Bridge end — plus two
+per-day weight lists (csv/xlsx/json).
 
 **Bridge ranges (köprü).** For Turkish holidays, `bridge_start`/`bridge_end`
 ([`special_days/bridge.py`](special_days/bridge.py)) extend the statutory dates
