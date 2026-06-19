@@ -32,6 +32,30 @@ class LoadDotenvTest(unittest.TestCase):
             config.load_dotenv(path)
         self.assertEqual(os.environ[self.key], "abc123")
 
+    def test_strips_inline_comment(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(tmp, f"{self.key}=value123   # a comment\n")
+            config.load_dotenv(path)
+        self.assertEqual(os.environ[self.key], "value123")
+
+    def test_comment_only_value_is_empty(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(tmp, f"{self.key}=    # http://localhost:8000/v1\n")
+            config.load_dotenv(path)
+        self.assertEqual(os.environ.get(self.key), "")
+
+    def test_hash_inside_quoted_value_kept(self):
+        import tempfile
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = self._write(tmp, f'{self.key}="a#b"\n')
+            config.load_dotenv(path)
+        self.assertEqual(os.environ[self.key], "a#b")
+
     def test_missing_file_is_noop(self):
         config.load_dotenv("/no/such/.env")  # must not raise
 

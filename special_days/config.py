@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 TICKETMASTER_API_KEY_ENV = "TICKETMASTER_API_KEY"
@@ -30,9 +31,16 @@ def load_dotenv(path: str | os.PathLike = ".env") -> None:
         if not line or line.startswith("#") or "=" not in line:
             continue
         key, _, value = line.partition("=")
-        key, value = key.strip(), value.strip().strip("'\"")
+        key = key.strip()
         if key.startswith("export "):  # tolerate `export KEY=value` lines
             key = key[len("export "):].strip()
+        value = value.strip()
+        if value[:1] in ("'", '"'):
+            value = value.strip("'\"")  # quoted: take literally
+        elif value.startswith("#"):
+            value = ""  # the whole value is an inline comment
+        else:
+            value = re.split(r"\s+#", value, 1)[0].strip()  # strip trailing " # comment"
         if key and key not in os.environ:
             os.environ[key] = value
 
