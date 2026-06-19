@@ -102,7 +102,8 @@ python -m special_days [options]
 --output, -o          write to a file instead of stdout (xlsx always writes a file)
 --catchment-km        nearest-airport radius in km      (default: 150)
 --max-event-span-days drop events longer than this; 0 = off (default: 30)
---impact-scorer       heuristic | llm                   (default: heuristic)
+--impact-scorer       heuristic | openai | vllm         (default: heuristic)
+--llm-model           override the LLM model name (openai/vllm)
 --limit               cap rows printed (after sorting by date)
 --verbose             log progress / skipped sources to stderr
 ```
@@ -155,11 +156,30 @@ E.g. Ramazan Bayramı 2027 `08–11 Mar` → bridge `06–14 Mar`.
 forced to the peak**. Example bridge curve: `99,99,74,62,50,62,74,99,99`.
 
 **Impact score** (the peak) comes from a pluggable scorer
-([`special_days/scoring.py`](special_days/scoring.py)):
-- `heuristic` (default): transparent category + duration + airport-proximity score.
-- `llm` (`--impact-scorer llm`): scaffolded for a model with per-scenario prompts
-  (TR-holiday vs international vs event); requires `ANTHROPIC_API_KEY`. The model
-  call is **stubbed** — wire it (or inject `call_model`) to enable it.
+([`special_days/scoring.py`](special_days/scoring.py)) with per-scenario prompts
+(TR-holiday vs international vs event):
+- `heuristic` (default): transparent category + duration + airport-proximity score,
+  offline, no key.
+- `openai` (`--impact-scorer openai`): scores each record via the OpenAI chat API
+  (default model `gpt-5-mini`); needs `OPENAI_API_KEY`.
+- `vllm` (`--impact-scorer vllm`): same prompts against any OpenAI-compatible vLLM
+  server; needs `VLLM_BASE_URL` (+ `VLLM_MODEL`, optional `VLLM_API_KEY`).
+
+Both LLM backends share one OpenAI-compatible client
+([`special_days/gateways.py`](special_days/gateways.py)); pick the model with
+`--llm-model`. Example:
+
+```bash
+# OpenAI gpt-5-mini (set OPENAI_API_KEY in .env). Scope small for cost:
+python -m special_days --agent turkey --source holidays --impact-scorer openai
+
+# A self-hosted vLLM model
+VLLM_BASE_URL=http://localhost:8000/v1 VLLM_MODEL=my-model \
+  python -m special_days --agent turkey --source holidays --impact-scorer vllm
+```
+
+> The LLM scorer makes **one call per record**, so scope runs with `--agent` /
+> `--source` (or test on holidays, ~13 records) before scoring the full event feed.
 
 ## Project layout
 
@@ -179,7 +199,8 @@ special_days/
   agents.py        TurkeyAgent, InternationalAgent
   bridge.py        köprü bridge ranges (TR holidays)
   curve.py         per-day Linear-V weight curves
-  scoring.py       pluggable impact scorer (heuristic default, LLM stub)
+  scoring.py       pluggable impact scorer (heuristic default + LLM)
+  gateways.py      OpenAI / vLLM chat-completions gateways
   enrich.py        airport mapping + scoring + bridges + curves + noise filter
   output.py        table / csv / json renderers
   xlsx_writer.py   Excel (.xlsx) writer (openpyxl)
