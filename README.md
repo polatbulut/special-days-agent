@@ -102,6 +102,7 @@ python -m special_days [options]
 --output, -o          write to a file instead of stdout (xlsx always writes a file)
 --catchment-km        nearest-airport radius in km      (default: 150)
 --max-event-span-days drop events longer than this; 0 = off (default: 30)
+--impact-scorer       heuristic | llm                   (default: heuristic)
 --limit               cap rows printed (after sorting by date)
 --verbose             log progress / skipped sources to stderr
 ```
@@ -135,16 +136,30 @@ docker run --rm --env-file .env -v "$PWD/out:/app/out" special-days-agent \
 
 Or via the Makefile: `make docker-run ARGS="--agent both --format xlsx -o out/special_days.xlsx"`.
 
-## Canonical record & impact score
+## Canonical record, bridges & impact
 
 Every source maps into one `SpecialDate` (see [`special_days/models.py`](special_days/models.py)).
-The six headline fields are the output; the rest aid traceability.
+Output columns: Event, Start date, End date, City, Nearest airport, Impact,
+Bridge start, Bridge end — plus two per-day weight lists (csv/xlsx/json).
 
-The **impact score** (`special_days/enrich.py`) is a transparent, tunable
-heuristic combining a per-category base weight (religious holiday > public
-holiday > school break ≈ concert > …), a duration bonus (a 9-day bayram
-outranks a 3-day one) and airport proximity, clamped to 0-100. Calibrate the
-weights against historical load factors, then later replace with a learned model.
+**Bridge ranges (köprü).** For Turkish holidays, `bridge_start`/`bridge_end`
+([`special_days/bridge.py`](special_days/bridge.py)) extend the statutory dates
+outward to the full long-weekend block: adjacent weekends are absorbed, and up
+to 2 working days (1 for a single-day holiday) are bridged to reach a weekend.
+E.g. Ramazan Bayramı 2027 `08–11 Mar` → bridge `06–14 Mar`.
+
+**Per-day impact curves.** Each record carries two ordered weight lists
+([`special_days/curve.py`](special_days/curve.py)) — over the statutory range
+(`impact_by_day`) and the bridge range (`impact_by_day_bridge`). The curve is a
+**Linear V** (peak at the departure/return ends, ~50% mid-break) with **weekends
+forced to the peak**. Example bridge curve: `99,99,74,62,50,62,74,99,99`.
+
+**Impact score** (the peak) comes from a pluggable scorer
+([`special_days/scoring.py`](special_days/scoring.py)):
+- `heuristic` (default): transparent category + duration + airport-proximity score.
+- `llm` (`--impact-scorer llm`): scaffolded for a model with per-scenario prompts
+  (TR-holiday vs international vs event); requires `ANTHROPIC_API_KEY`. The model
+  call is **stubbed** — wire it (or inject `call_model`) to enable it.
 
 ## Project layout
 
@@ -162,7 +177,10 @@ special_days/
     meb.py         school breaks      (bundled official)
     ticketmaster.py events           (Ticketmaster Discovery)
   agents.py        TurkeyAgent, InternationalAgent
-  enrich.py        nearest-airport mapping + impact scoring + noise filter
+  bridge.py        köprü bridge ranges (TR holidays)
+  curve.py         per-day Linear-V weight curves
+  scoring.py       pluggable impact scorer (heuristic default, LLM stub)
+  enrich.py        airport mapping + scoring + bridges + curves + noise filter
   output.py        table / csv / json renderers
   xlsx_writer.py   Excel (.xlsx) writer (openpyxl)
   cli.py           argument parsing + orchestration
