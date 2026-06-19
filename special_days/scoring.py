@@ -1,9 +1,8 @@
 """Pluggable impact scorers.
 
 ``HeuristicScorer`` (the default) is a transparent category/duration/proximity
-heuristic. ``LLMScorer`` is scaffolded for a future model — it builds a
-scenario-specific prompt from each record but the actual model call is stubbed
-(inject ``call_model`` or wire the Anthropic API later).
+heuristic. ``LLMScorer`` prompts an LLM gateway (OpenAI or vLLM) per record with
+a scenario-specific prompt and parses a 0-100 score from the reply.
 """
 
 from __future__ import annotations
@@ -12,6 +11,7 @@ import re
 from datetime import date
 from typing import Callable, Protocol
 
+from .gateways import make_gateway
 from .models import SpecialDate
 
 # Base impact by category, before duration/proximity adjustments.
@@ -82,16 +82,13 @@ _PROMPT_EVENT = (
 
 
 class LLMScorer:
-    """Scaffolded LLM scorer. The model call is stubbed (no live calls yet)."""
+    """Scores a record by prompting an LLM gateway (a ``prompt -> reply`` callable)."""
 
-    def __init__(self, api_key: str | None, call_model: Callable[[str], str] | None = None):
-        if not api_key:
-            raise ValueError("ANTHROPIC_API_KEY is required for --impact-scorer llm")
-        self._api_key = api_key
+    def __init__(self, call_model: Callable[[str], str]):
         self._model_fn = call_model
 
     def score(self, record: SpecialDate) -> int:
-        return self._parse(self._call_model(self._build_prompt(record)))
+        return self._parse(self._model_fn(self._build_prompt(record)))
 
     def _scenario(self, record: SpecialDate) -> str:
         if record.is_tr_holiday():
@@ -116,15 +113,6 @@ class LLMScorer:
             airport=record.nearest_airport or "n/a",
         )
 
-    def _call_model(self, prompt: str) -> str:
-        if self._model_fn is not None:
-            return self._model_fn(prompt)
-        raise NotImplementedError(
-            "LLMScorer model call is not wired yet. Inject call_model=... for "
-            "testing, or implement the Anthropic Messages API call "
-            "(model claude-haiku-4-5) — see the claude-api skill."
-        )
-
     @staticmethod
     def _parse(reply: str) -> int:
         text = (reply or "").strip().rstrip(".")
@@ -138,10 +126,28 @@ class LLMScorer:
         return max(0, min(100, int(numbers[-1])))
 
 
-def get_scorer(name: str, *, api_key: str | None = None) -> Scorer:
-    """Factory: ``heuristic`` (default) or ``llm`` (requires ``api_key``)."""
+def get_scorer(
+    name: str,
+    *,
+    openai_api_key: str | None = None,
+    vllm_base_url: str | None = None,
+    vllm_api_key: str | None = None,
+    model: str | None = None,
+) -> Scorer:
+    """Factory: ``heuristic`` (default), ``openai`` or ``vllm``.
+
+    The LLM backends build the matching gateway (validating credentials) and
+    wrap it in an :class:`LLMScorer`.
+    """
     if name == "heuristic":
         return HeuristicScorer()
-    if name == "llm":
-        return LLMScorer(api_key)
+    if name in ("openai", "vllm"):
+        gateway = make_gateway(
+            name,
+            openai_api_key=openai_api_key,
+            vllm_base_url=vllm_base_url,
+            vllm_api_key=vllm_api_key,
+            model=model,
+        )
+        return LLMScorer(gateway)
     raise ValueError(f"Unknown impact scorer: {name!r}")

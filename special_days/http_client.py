@@ -41,3 +41,34 @@ def get_json(url: str, params: dict | None = None, timeout: float = 30.0):
         return json.loads(payload.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
         raise HttpError(f"Invalid JSON from {url}: {exc}") from exc
+
+
+def post_json(url: str, payload: dict, headers: dict | None = None, timeout: float = 60.0):
+    """POST ``payload`` as JSON to ``url`` and parse the JSON response.
+
+    Raises :class:`HttpError` on network/status failure (the error includes a
+    snippet of the response body, which helps debug API 4xx replies).
+    """
+    body = json.dumps(payload).encode("utf-8")
+    request_headers = {
+        "User-Agent": USER_AGENT,
+        "Accept": "application/json",
+        "Content-Type": "application/json",
+    }
+    if headers:
+        request_headers.update(headers)
+
+    request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            data = response.read()
+    except urllib.error.HTTPError as exc:
+        detail = exc.read().decode("utf-8", "replace")[:500] if hasattr(exc, "read") else ""
+        raise HttpError(f"HTTP {exc.code} for {url}: {exc.reason} — {detail}") from exc
+    except urllib.error.URLError as exc:
+        raise HttpError(f"Network error for {url}: {exc.reason}") from exc
+
+    try:
+        return json.loads(data.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise HttpError(f"Invalid JSON from {url}: {exc}") from exc
