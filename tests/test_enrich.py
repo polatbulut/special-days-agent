@@ -1,3 +1,4 @@
+import threading
 import unittest
 from datetime import date
 
@@ -90,6 +91,45 @@ class EnrichTest(unittest.TestCase):
         [out] = enrich.enrich([holiday("Ramazan Bayramı", "2026-03-19", "2026-03-22")])
         self.assertIsNone(out.nearest_airport)
         self.assertIsInstance(out.impact_score, int)
+
+
+class _DayScorer:
+    """Returns the start day, so results depend on (and reveal) record order."""
+
+    def score(self, record):
+        return record.start_date.day
+
+
+class ConcurrencyTest(unittest.TestCase):
+    def _records(self, n):
+        return [event("İstanbul", 41.0, 29.0, start=f"2026-07-0{i}") for i in range(1, n + 1)]
+
+    def test_concurrency_preserves_order_and_results(self):
+        recs = self._records(5)
+        seq = [r.impact_score for r in enrich.enrich(recs, scorer=_DayScorer(), concurrency=1)]
+        par = [r.impact_score for r in enrich.enrich(recs, scorer=_DayScorer(), concurrency=4)]
+        self.assertEqual(seq, [1, 2, 3, 4, 5])
+        self.assertEqual(par, seq)
+
+    def test_calls_actually_run_in_parallel(self):
+        n = 4
+        barrier = threading.Barrier(n, timeout=5)  # each call blocks until all n arrive
+
+        class BarrierScorer:
+            def score(self, record):
+                barrier.wait()  # times out (BrokenBarrierError) if scoring were sequential
+                return 50
+
+        out = enrich.enrich(self._records(n), scorer=BarrierScorer(), concurrency=n)
+        self.assertEqual([r.impact_score for r in out], [50] * n)
+
+    def test_first_error_propagates(self):
+        class Boom:
+            def score(self, record):
+                raise RuntimeError("boom")
+
+        with self.assertRaises(RuntimeError):
+            enrich.enrich(self._records(3), scorer=Boom(), concurrency=2)
 
 
 if __name__ == "__main__":

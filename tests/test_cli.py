@@ -41,6 +41,10 @@ class CollectTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["--start", "not-a-date"])
 
+    def test_concurrency_must_be_positive(self):
+        with self.assertRaises(SystemExit):
+            cli.build_parser().parse_args(["--concurrency", "0"])
+
     def test_impact_scorer_choice_validated(self):
         with self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["--impact-scorer", "bogus"])
