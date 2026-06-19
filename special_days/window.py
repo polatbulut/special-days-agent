@@ -31,3 +31,8 @@ def resolve_window(start: date | None, months: int) -> tuple[date, date]:
 def overlaps(start: date, end: date, window_start: date, window_end: date) -> bool:
     """True if ``[start, end]`` intersects ``[window_start, window_end]``."""
     return start <= window_end and end >= window_start
+
+
+def is_weekend(day: date) -> bool:
+    """True for Saturday/Sunday (Turkey's weekend)."""
+    return day.isoweekday() >= 6

@@ -1,34 +1,24 @@
-"""Enrichment stage: nearest-airport mapping (IATA) and impact scoring.
+"""Enrichment stage: nearest-airport mapping, scoring, bridges and curves.
 
 Runs after collection/de-duplication. For events with venue coordinates it
-attaches the nearest airport within a catchment radius; every record gets a
-transparent 0-100 impact score so analysts can separate major from minor.
+attaches the nearest airport within a catchment radius. Every record then gets,
+in order: a scalar impact score (via a pluggable scorer), a köprü bridge range
+(TR holidays only) and two per-day weight curves (statutory + bridge).
 """
 
 from __future__ import annotations
 
 import dataclasses
 import math
-from datetime import date
 
+from . import curve
+from .bridge import compute_bridge
 from .dataset import load_airports
 from .models import SpecialDate
+from .scoring import HeuristicScorer, Scorer
 
 DEFAULT_CATCHMENT_KM = 150.0
 DEFAULT_MAX_EVENT_SPAN_DAYS = 30
-
-# Base impact by category (0-100 before adjustments).
-_CATEGORY_WEIGHT = {
-    "religious_holiday": 90,
-    "public_holiday": 70,
-    "school_holiday": 55,
-    "sports": 60,
-    "concert": 55,
-    "arts": 45,
-    "film": 40,
-    "event": 50,
-}
-_DEFAULT_WEIGHT = 45
 
 
 def haversine_km(lat1: float, lon1: float, lat2: float, lon2: float) -> float:
@@ -53,26 +43,19 @@ def nearest_airport(lat: float, lon: float, catchment_km: float) -> tuple[str, f
     return best
 
 
-def _span_days(start: date, end: date) -> int:
+def _span_days(start, end) -> int:
     return (end - start).days + 1
 
 
 def impact_score(record: SpecialDate, airport_distance_km: float | None) -> int:
-    """A transparent 0-100 heuristic; calibrate the weights against history."""
-    score = float(_CATEGORY_WEIGHT.get(record.category, _DEFAULT_WEIGHT))
+    """Heuristic score for ``record`` (delegates to :class:`HeuristicScorer`).
 
-    # Longer spans sustain demand (e.g. a 9-day bayram outranks a 3-day one).
-    score += min(20, (_span_days(record.start_date, record.end_date) - 1) * 3)
-
-    # Proximity to a major airport (events only).
-    if airport_distance_km is not None:
-        score += 15 if airport_distance_km <= 30 else 8
-    elif record.lat is not None and record.lon is not None:
-        # A located event with no airport within catchment matters a bit less.
-        # (Records with incomplete coordinates are left neutral.)
-        score -= 10
-
-    return max(0, min(100, round(score)))
+    Kept for backwards compatibility; the scorer reads ``airport_distance_km``
+    off the record, so it is set here before scoring.
+    """
+    return HeuristicScorer().score(
+        dataclasses.replace(record, airport_distance_km=airport_distance_km)
+    )
 
 
 def drop_long_events(
@@ -80,11 +63,8 @@ def drop_long_events(
     max_event_span_days: int = DEFAULT_MAX_EVENT_SPAN_DAYS,
 ) -> list[SpecialDate]:
     """Drop over-long *events* — Ticketmaster season tickets and multi-month
-    passes/exhibitions are listing artifacts, not demand spikes.
-
-    Only ``ticketmaster`` records are affected; holidays and school breaks
-    (which legitimately span weeks) are always kept. ``max_event_span_days <= 0``
-    disables the filter.
+    passes are listing artifacts, not demand spikes. Holidays/school breaks are
+    always kept. ``max_event_span_days <= 0`` disables the filter.
     """
     if max_event_span_days <= 0:
         return list(records)
@@ -96,8 +76,15 @@ def drop_long_events(
     return kept
 
 
-def enrich(records: list[SpecialDate], catchment_km: float = DEFAULT_CATCHMENT_KM) -> list[SpecialDate]:
-    """Return copies of ``records`` with airport + impact fields populated."""
+def enrich(
+    records: list[SpecialDate],
+    catchment_km: float = DEFAULT_CATCHMENT_KM,
+    scorer: Scorer | None = None,
+) -> list[SpecialDate]:
+    """Return copies of ``records`` with airport, score, bridge and curve fields."""
+    if scorer is None:
+        scorer = HeuristicScorer()
+
     enriched: list[SpecialDate] = []
     for record in records:
         iata: str | None = None
@@ -107,12 +94,20 @@ def enrich(records: list[SpecialDate], catchment_km: float = DEFAULT_CATCHMENT_K
             if match is not None:
                 iata, distance = match[0], round(match[1], 1)
 
+        # Airport must be set before scoring (the heuristic reads the distance).
+        record = dataclasses.replace(record, nearest_airport=iata, airport_distance_km=distance)
+
+        peak = scorer.score(record)
+        bridge_start, bridge_end = compute_bridge(record)
+
         enriched.append(
             dataclasses.replace(
                 record,
-                nearest_airport=iata,
-                airport_distance_km=distance,
-                impact_score=impact_score(record, distance),
+                impact_score=peak,
+                bridge_start=bridge_start,
+                bridge_end=bridge_end,
+                impact_by_day=curve.weights(record.start_date, record.end_date, peak),
+                impact_by_day_bridge=curve.weights(bridge_start, bridge_end, peak),
             )
         )
     return enriched

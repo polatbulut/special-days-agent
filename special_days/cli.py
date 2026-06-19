@@ -24,10 +24,11 @@ import sys
 from datetime import date
 
 from .agents import InternationalAgent, TurkeyAgent
-from .config import DEFAULT_INTERNATIONAL_COUNTRIES, load_dotenv
+from .config import DEFAULT_INTERNATIONAL_COUNTRIES, get_anthropic_key, load_dotenv
 from .enrich import DEFAULT_CATCHMENT_KM, DEFAULT_MAX_EVENT_SPAN_DAYS, drop_long_events, enrich
 from .models import SpecialDate
 from .output import render
+from .scoring import get_scorer
 from .window import resolve_window
 
 DEFAULT_MONTHS = 12
@@ -123,6 +124,12 @@ def build_parser() -> argparse.ArgumentParser:
         ),
     )
     parser.add_argument(
+        "--impact-scorer",
+        choices=["heuristic", "llm"],
+        default="heuristic",
+        help="How to score impact (default: heuristic). 'llm' requires ANTHROPIC_API_KEY.",
+    )
+    parser.add_argument(
         "--limit",
         type=_non_negative_int,
         default=None,
@@ -191,12 +198,18 @@ def main(argv: list[str] | None = None) -> int:
     )
     load_dotenv()
 
+    try:
+        scorer = get_scorer(args.impact_scorer, api_key=get_anthropic_key())
+    except ValueError as exc:
+        print(f"error: {exc}", file=sys.stderr)
+        return 2
+
     start, end = resolve_window(args.start, args.months)
     logging.getLogger(__name__).info("Collecting window %s -> %s", start, end)
 
     rows = collect(args, start, end)
     rows = drop_long_events(rows, args.max_event_span_days)
-    rows = enrich(rows, catchment_km=args.catchment_km)
+    rows = enrich(rows, catchment_km=args.catchment_km, scorer=scorer)
     rows.sort(key=SpecialDate.sort_key)
     if args.limit is not None:
         rows = rows[: args.limit]

@@ -6,6 +6,7 @@ import os
 from pathlib import Path
 
 TICKETMASTER_API_KEY_ENV = "TICKETMASTER_API_KEY"
+ANTHROPIC_API_KEY_ENV = "ANTHROPIC_API_KEY"
 
 # Default destination markets for the international agent. Kept short on
 # purpose — override with `--countries` on the CLI.
@@ -36,4 +37,10 @@ def load_dotenv(path: str | os.PathLike = ".env") -> None:
 def get_ticketmaster_key() -> str | None:
     """Return the Ticketmaster API key from the environment, or ``None``."""
     key = os.environ.get(TICKETMASTER_API_KEY_ENV, "").strip()
+    return key or None
+
+
+def get_anthropic_key() -> str | None:
+    """Return the Anthropic API key from the environment, or ``None``."""
+    key = os.environ.get(ANTHROPIC_API_KEY_ENV, "").strip()
     return key or None
