@@ -1,9 +1,9 @@
 """Special-Date Intelligence Agents (MVP).
 
-Discovers forward-looking *special dates* — public/religious holidays and
-public events (concerts, sports, arts) — and emits them in one simple shape:
+Discovers forward-looking *special dates* — public/religious holidays, school
+breaks and public events (concerts, sports, arts) — and emits them as:
 
-    Event  —  start date  —  end date  —  city
+    Event — Start date — End date — City — Nearest airport — Impact
 
 Two collector agents share one canonical schema:
 
