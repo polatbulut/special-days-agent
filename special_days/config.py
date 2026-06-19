@@ -6,7 +6,10 @@ import os
 from pathlib import Path
 
 TICKETMASTER_API_KEY_ENV = "TICKETMASTER_API_KEY"
-ANTHROPIC_API_KEY_ENV = "ANTHROPIC_API_KEY"
+OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
+VLLM_BASE_URL_ENV = "VLLM_BASE_URL"
+VLLM_API_KEY_ENV = "VLLM_API_KEY"
+VLLM_MODEL_ENV = "VLLM_MODEL"
 
 # Default destination markets for the international agent. Kept short on
 # purpose — override with `--countries` on the CLI.
@@ -40,7 +43,26 @@ def get_ticketmaster_key() -> str | None:
     return key or None
 
 
-def get_anthropic_key() -> str | None:
-    """Return the Anthropic API key from the environment, or ``None``."""
-    key = os.environ.get(ANTHROPIC_API_KEY_ENV, "").strip()
-    return key or None
+def _env(name: str) -> str | None:
+    value = os.environ.get(name, "").strip()
+    return value or None
+
+
+def get_openai_key() -> str | None:
+    """Return the OpenAI API key from the environment, or ``None``."""
+    return _env(OPENAI_API_KEY_ENV)
+
+
+def get_vllm_base_url() -> str | None:
+    """Return the vLLM server base URL (e.g. http://host:8000/v1), or ``None``."""
+    return _env(VLLM_BASE_URL_ENV)
+
+
+def get_vllm_api_key() -> str | None:
+    """Return the vLLM API key, or ``None`` (vLLM often needs no real key)."""
+    return _env(VLLM_API_KEY_ENV)
+
+
+def get_vllm_model() -> str | None:
+    """Return the default vLLM model name from the environment, or ``None``."""
+    return _env(VLLM_MODEL_ENV)

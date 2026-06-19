@@ -24,7 +24,14 @@ import sys
 from datetime import date
 
 from .agents import InternationalAgent, TurkeyAgent
-from .config import DEFAULT_INTERNATIONAL_COUNTRIES, get_anthropic_key, load_dotenv
+from .config import (
+    DEFAULT_INTERNATIONAL_COUNTRIES,
+    get_openai_key,
+    get_vllm_api_key,
+    get_vllm_base_url,
+    get_vllm_model,
+    load_dotenv,
+)
 from .enrich import DEFAULT_CATCHMENT_KM, DEFAULT_MAX_EVENT_SPAN_DAYS, drop_long_events, enrich
 from .models import SpecialDate
 from .output import render
@@ -125,9 +132,17 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--impact-scorer",
-        choices=["heuristic", "llm"],
+        choices=["heuristic", "openai", "vllm"],
         default="heuristic",
-        help="How to score impact (default: heuristic). 'llm' requires ANTHROPIC_API_KEY.",
+        help=(
+            "How to score impact (default: heuristic). 'openai' uses OPENAI_API_KEY "
+            "(model gpt-5-mini); 'vllm' uses VLLM_BASE_URL + VLLM_MODEL."
+        ),
+    )
+    parser.add_argument(
+        "--llm-model",
+        default=None,
+        help="Override the LLM model (default: gpt-5-mini for openai; VLLM_MODEL for vllm).",
     )
     parser.add_argument(
         "--limit",
@@ -198,8 +213,17 @@ def main(argv: list[str] | None = None) -> int:
     )
     load_dotenv()
 
+    model = args.llm_model
+    if args.impact_scorer == "vllm" and not model:
+        model = get_vllm_model()
     try:
-        scorer = get_scorer(args.impact_scorer, api_key=get_anthropic_key())
+        scorer = get_scorer(
+            args.impact_scorer,
+            openai_api_key=get_openai_key(),
+            vllm_base_url=get_vllm_base_url(),
+            vllm_api_key=get_vllm_api_key(),
+            model=model,
+        )
     except ValueError as exc:
         print(f"error: {exc}", file=sys.stderr)
         return 2
