@@ -18,7 +18,7 @@ def make(event="Concert", start="2026-07-01", end=None, city="Istanbul", airport
 
 
 class SpecialDateTest(unittest.TestCase):
-    def test_core_row_is_the_eight_headline_fields(self):
+    def test_core_row_is_the_nine_headline_fields(self):
         row = make(
             event="Bayram", start="2026-03-20", end="2026-03-22",
             city="Nationwide (TR)", airport="IST", impact=88,
@@ -26,12 +26,14 @@ class SpecialDateTest(unittest.TestCase):
         )
         self.assertEqual(
             row.core_row(),
-            ("Bayram", "2026-03-20", "2026-03-22", "Nationwide (TR)", "IST", "88",
-             "2026-03-19", "2026-03-23"),
+            ("Bayram", "2026-03-20", "2026-03-22", "Nationwide (TR)", "ticketmaster",
+             "IST", "88", "2026-03-19", "2026-03-23"),
         )
 
-    def test_core_row_blanks_for_missing_enrichment(self):
-        self.assertEqual(make(event="X").core_row()[4:], ("", "", "", ""))
+    def test_core_row_has_source_and_blanks_for_missing_enrichment(self):
+        row = make(event="X").core_row()
+        self.assertEqual(row[4], "ticketmaster")  # source
+        self.assertEqual(row[5:], ("", "", "", ""))  # airport, impact, bridges blank
 
     def test_to_dict_serialises_dates_as_iso_strings(self):
         d = make(airport="IST", impact=50).to_dict()
@@ -57,10 +59,10 @@ class OutputTest(unittest.TestCase):
         lines = out.splitlines()
         self.assertEqual(
             lines[0],
-            "event,start_date,end_date,city,nearest_airport,impact,"
+            "event,start_date,end_date,city,source,nearest_airport,impact,"
             "bridge_start,bridge_end,impact_by_day,impact_by_day_bridge",
         )
-        self.assertIn("Festival,2026-07-01,2026-07-03,İzmir,ADB,63", out)
+        self.assertIn("Festival,2026-07-01,2026-07-03,İzmir,ticketmaster,ADB,63", out)
 
     def test_table_includes_event_and_new_columns(self):
         out = render_table(self.rows)

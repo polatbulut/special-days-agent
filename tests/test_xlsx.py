@@ -10,7 +10,7 @@ from special_days.models import SpecialDate
 from special_days.xlsx_writer import write_xlsx
 
 HEADER = [
-    "Event", "Start date", "End date", "City", "Nearest airport", "Impact",
+    "Event", "Start date", "End date", "City", "Source", "Nearest airport", "Impact",
     "Bridge start", "Bridge end", "Impact by day", "Impact by day (bridge)",
 ]
 
@@ -48,8 +48,9 @@ class XlsxWriterTest(unittest.TestCase):
         )
         self.assertEqual(sheet["A2"].value, "Tarkan Live")
         self.assertEqual(sheet["D2"].value, "İstanbul")  # unicode preserved
-        self.assertEqual(sheet["E2"].value, "IST")
-        self.assertEqual(sheet["F2"].value, 72)  # numeric impact cell
+        self.assertEqual(sheet["E2"].value, "ticketmaster")  # source
+        self.assertEqual(sheet["F2"].value, "IST")  # nearest airport
+        self.assertEqual(sheet["G2"].value, 72)  # numeric impact cell
         start = sheet["B2"].value  # real date cell, not text
         self.assertEqual((start.year, start.month, start.day), (2026, 7, 15))
         self.assertEqual(sheet["B2"].number_format, "yyyy-mm-dd")
@@ -57,7 +58,7 @@ class XlsxWriterTest(unittest.TestCase):
     def test_freeze_panes_and_autofilter(self):
         sheet = self._write_and_load([make("A", "X"), make("B", "Y")])
         self.assertEqual(sheet.freeze_panes, "A2")
-        self.assertEqual(sheet.auto_filter.ref, "A1:J3")  # header + 2 rows, 10 cols
+        self.assertEqual(sheet.auto_filter.ref, "A1:K3")  # header + 2 rows, 11 cols
 
     def test_bridge_dates_and_weight_json_cells(self):
         sheet = self._write_and_load([
@@ -66,14 +67,14 @@ class XlsxWriterTest(unittest.TestCase):
                  by_day=(("2027-03-08", 99), ("2027-03-09", 75)),
                  by_day_bridge=(("2027-03-06", 99),)),
         ])
-        # Bridge dates are real date cells with the date number format.
-        g2 = sheet["G2"]
-        self.assertEqual((g2.value.year, g2.value.month, g2.value.day), (2027, 3, 6))
-        self.assertEqual(g2.number_format, "yyyy-mm-dd")
-        self.assertEqual((sheet["H2"].value.year, sheet["H2"].value.month), (2027, 3))
-        # Weight lists are JSON strings.
-        self.assertEqual(json.loads(sheet["I2"].value), {"2027-03-08": 99, "2027-03-09": 75})
-        self.assertEqual(json.loads(sheet["J2"].value), {"2027-03-06": 99})
+        # Bridge dates are real date cells with the date number format (cols H, I).
+        h2 = sheet["H2"]
+        self.assertEqual((h2.value.year, h2.value.month, h2.value.day), (2027, 3, 6))
+        self.assertEqual(h2.number_format, "yyyy-mm-dd")
+        self.assertEqual((sheet["I2"].value.year, sheet["I2"].value.month), (2027, 3))
+        # Weight lists are JSON strings (cols J, K).
+        self.assertEqual(json.loads(sheet["J2"].value), {"2027-03-08": 99, "2027-03-09": 75})
+        self.assertEqual(json.loads(sheet["K2"].value), {"2027-03-06": 99})
 
     def test_empty_rows_still_valid(self):
         sheet = self._write_and_load([])
