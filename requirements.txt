@@ -1,3 +1,4 @@
 # Runtime dependencies. Install into a virtual environment:
 #   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 openpyxl>=3.1,<4
+certifi>=2024.0  # CA bundle so HTTPS works without system certs (macOS/Homebrew Python)

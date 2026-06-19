@@ -1,13 +1,23 @@
-"""Tiny stdlib HTTP helper — keeps the MVP dependency-free."""
+"""Tiny stdlib HTTP helper."""
 
 from __future__ import annotations
 
 import json
+import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
 
 USER_AGENT = "special-days-agent/0.1 (+https://github.com/polatbulut/special-days-agent)"
+
+# Use certifi's CA bundle so HTTPS works even when the Python install has no
+# system certificates configured (common with Homebrew Python on macOS).
+try:
+    import certifi
+
+    _SSL_CONTEXT: ssl.SSLContext | None = ssl.create_default_context(cafile=certifi.where())
+except Exception:  # certifi missing -> fall back to the system default
+    _SSL_CONTEXT = None
 
 
 class HttpError(Exception):
@@ -30,7 +40,7 @@ def get_json(url: str, params: dict | None = None, timeout: float = 30.0):
         headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
     )
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout, context=_SSL_CONTEXT) as response:
             payload = response.read()
     except urllib.error.HTTPError as exc:
         raise HttpError(f"HTTP {exc.code} for {url}: {exc.reason}") from exc
@@ -60,7 +70,7 @@ def post_json(url: str, payload: dict, headers: dict | None = None, timeout: flo
 
     request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=timeout) as response:
+        with urllib.request.urlopen(request, timeout=timeout, context=_SSL_CONTEXT) as response:
             data = response.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")[:500] if hasattr(exc, "read") else ""
