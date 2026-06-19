@@ -1,0 +1,44 @@
+name: Weekly special dates
+
+# Runs in the cloud every Monday and produces the next-12-months Excel file as
+# a downloadable artifact. No local machine required.
+on:
+  schedule:
+    - cron: "0 6 * * 1" # Mondays 06:00 UTC
+  workflow_dispatch: # allow manual runs from the Actions tab
+    inputs:
+      months:
+        description: "Window length in months"
+        default: "12"
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate special dates (next N months)
+        env:
+          # Add this in repo Settings → Secrets and variables → Actions.
+          # Without it, holidays are still produced and events are skipped.
+          TICKETMASTER_API_KEY: ${{ secrets.TICKETMASTER_API_KEY }}
+        run: |
+          python -m special_days \
+            --agent both \
+            --months "${{ github.event.inputs.months || '12' }}" \
+            --format xlsx \
+            --output out/special_days.xlsx
+
+      - name: Upload Excel artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: special-days-xlsx
+          path: out/special_days.xlsx
+          retention-days: 90
