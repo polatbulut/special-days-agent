@@ -104,6 +104,7 @@ python -m special_days [options]
 --max-event-span-days drop events longer than this; 0 = off (default: 30)
 --impact-scorer       heuristic | openai | vllm         (default: heuristic)
 --llm-model           override the LLM model name (openai/vllm)
+--concurrency         parallel LLM scoring requests     (default: 8 llm / 1 heuristic)
 --limit               cap rows printed (after sorting by date)
 --verbose             log progress / skipped sources to stderr
 ```
@@ -179,8 +180,17 @@ VLLM_BASE_URL=http://localhost:8000/v1 VLLM_MODEL=my-model \
   python -m special_days --agent turkey --source holidays --impact-scorer vllm
 ```
 
-> The LLM scorer makes **one call per record**, so scope runs with `--agent` /
-> `--source` (or test on holidays, ~13 records) before scoring the full event feed.
+The LLM scorer makes **one request per record**. Those calls run **concurrently**
+(`--concurrency`, default 8 for the LLM backends) — airport mapping and the
+bridge/curve maths stay sequential. Lower `--concurrency` if you hit rate limits;
+still, scope large runs with `--agent` / `--source` to control cost (each record
+is a billable call).
+
+```bash
+# Score the full feed faster (16 requests in flight at once)
+python -m special_days --agent both --impact-scorer openai --concurrency 16 \
+    --format xlsx -o out/special_days.xlsx
+```
 
 ## Project layout
 
