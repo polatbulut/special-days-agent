@@ -33,7 +33,7 @@ class NagerTest(unittest.TestCase):
         self.assertEqual(first.start_date, date(2026, 1, 1))
         self.assertEqual(first.end_date, first.start_date)  # single-day
         self.assertEqual(first.city, "Nationwide (TR)")
-        self.assertEqual(first.category, "holiday")
+        self.assertEqual(first.category, "public_holiday")
         self.assertEqual(first.source, "nager")
 
     @mock.patch("special_days.sources.nager.get_json", return_value=SAMPLE)
@@ -59,6 +59,18 @@ class NagerTest(unittest.TestCase):
         with mock.patch("special_days.sources.nager.get_json", return_value=mixed):
             rows = nager.fetch_holidays("TR", 2026)
         self.assertEqual([r.event for r in rows], ["Yılbaşı", "Cumhuriyet Bayramı"])
+
+    def test_window_spans_years_and_filters(self):
+        per_year = {
+            2026: [{"date": "2026-12-31", "localName": "A"}],
+            2027: [{"date": "2027-01-01", "localName": "B"}, {"date": "2027-12-31", "localName": "C"}],
+        }
+        with mock.patch(
+            "special_days.sources.nager.get_json", side_effect=lambda url: per_year[int(url.split("/")[-2])]
+        ):
+            rows = nager.fetch_holidays_in_window("TR", date(2026, 12, 1), date(2027, 6, 1))
+        # A (Dec 2026) and B (Jan 2027) are in window; C (Dec 2027) is not.
+        self.assertEqual([r.event for r in rows], ["A", "B"])
 
 
 if __name__ == "__main__":

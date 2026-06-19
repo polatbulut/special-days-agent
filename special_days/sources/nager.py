@@ -49,9 +49,23 @@ def fetch_holidays(country_code: str, year: int, prefer_local_name: bool = True)
                 start_date=day,
                 end_date=day,
                 city=f"Nationwide ({country_code})",
-                category="holiday",
+                category="public_holiday",
                 country=country_code,
                 source="nager",
             )
         )
+    return holidays
+
+
+def fetch_holidays_in_window(country_code: str, start: date, end: date) -> list[SpecialDate]:
+    """Return public holidays for ``country_code`` falling within ``[start, end]``.
+
+    The window may span calendar years, so each year it touches is fetched and
+    the results are filtered to the window.
+    """
+    holidays: list[SpecialDate] = []
+    for year in range(start.year, end.year + 1):
+        for holiday in fetch_holidays(country_code, year):
+            if start <= holiday.start_date <= end:
+                holidays.append(holiday)
     return holidays

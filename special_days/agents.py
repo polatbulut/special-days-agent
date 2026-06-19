@@ -1,25 +1,26 @@
 """The two collector agents, sharing one canonical schema and pipeline.
 
-Both agents collect into :class:`~special_days.models.SpecialDate`. They
-differ only in *which* countries and sources they pull:
+Both collect into :class:`~special_days.models.SpecialDate` over a date
+window. They differ in which countries and sources they pull:
 
-* :class:`TurkeyAgent`        — domestic demand (TR)
+* :class:`TurkeyAgent`        — domestic (TR), incl. Diyanet + MEB sources
 * :class:`InternationalAgent` — destination markets across the network
 """
 
 from __future__ import annotations
 
 import logging
+from datetime import date
 
 from .config import DEFAULT_INTERNATIONAL_COUNTRIES, get_ticketmaster_key
 from .models import SpecialDate
-from .sources import nager, ticketmaster
+from .sources import diyanet, meb, nager, ticketmaster
 
 logger = logging.getLogger(__name__)
 
 
 class Agent:
-    """Base collector: one set of countries + the shared sources."""
+    """Base collector: a set of countries + the shared API sources."""
 
     def __init__(self, name: str, countries: list[str], ticketmaster_key: str | None = None):
         self.name = name
@@ -28,11 +29,12 @@ class Agent:
 
     def collect(
         self,
-        year: int,
+        start: date,
+        end: date,
         include_holidays: bool = True,
         include_events: bool = True,
     ) -> list[SpecialDate]:
-        """Collect special dates for ``year`` across this agent's countries.
+        """Collect special dates within ``[start, end]`` across this agent's countries.
 
         A failure on one country/source is logged and skipped so the rest of
         the run still produces output.
@@ -42,7 +44,7 @@ class Agent:
         for country in self.countries:
             if include_holidays:
                 try:
-                    results.extend(nager.fetch_holidays(country, year))
+                    results.extend(nager.fetch_holidays_in_window(country, start, end))
                 except Exception as exc:  # noqa: BLE001 - resilient collection
                     logger.warning("[%s] holidays failed for %s: %s", self.name, country, exc)
 
@@ -56,7 +58,7 @@ class Agent:
                 else:
                     try:
                         results.extend(
-                            ticketmaster.fetch_events(country, self.ticketmaster_key, year=year)
+                            ticketmaster.fetch_events(country, self.ticketmaster_key, start, end)
                         )
                     except Exception as exc:  # noqa: BLE001 - resilient collection
                         logger.warning("[%s] events failed for %s: %s", self.name, country, exc)
@@ -65,7 +67,7 @@ class Agent:
 
 
 class TurkeyAgent(Agent):
-    """Domestic agent — Turkey only."""
+    """Domestic agent — Turkey, plus the bundled Diyanet + MEB sources."""
 
     def __init__(self, ticketmaster_key: str | None = None):
         super().__init__(
@@ -73,6 +75,16 @@ class TurkeyAgent(Agent):
             countries=["TR"],
             ticketmaster_key=ticketmaster_key if ticketmaster_key is not None else get_ticketmaster_key(),
         )
+
+    def collect(self, start, end, include_holidays=True, include_events=True):
+        results = super().collect(start, end, include_holidays, include_events)
+        if include_holidays:
+            for source, label in ((diyanet, "diyanet"), (meb, "meb")):
+                try:
+                    results.extend(source.fetch_in_window(start, end))
+                except Exception as exc:  # noqa: BLE001 - resilient collection
+                    logger.warning("[turkey] %s failed: %s", label, exc)
+        return results
 
 
 class InternationalAgent(Agent):

@@ -4,7 +4,8 @@ Docs: https://developer.ticketmaster.com/products-and-docs/apis/discovery-api/v2
 Endpoint: GET /discovery/v2/events.json
 
 Covers concerts, sports and arts across 25+ countries including Turkey
-(Biletix is Ticketmaster's Turkish brand).
+(Biletix is Ticketmaster's Turkish brand). Venue coordinates are captured so
+the enrichment stage can map each event to the nearest airport.
 """
 
 from __future__ import annotations
@@ -19,19 +20,24 @@ API_URL = "https://app.ticketmaster.com/discovery/v2/events.json"
 
 logger = logging.getLogger(__name__)
 
+# Ticketmaster classification segment -> our impact category.
+_SEGMENT_CATEGORY = {
+    "Music": "concert",
+    "Sports": "sports",
+    "Arts & Theatre": "arts",
+    "Film": "film",
+}
+
 
 def fetch_events(
     country_code: str,
     api_key: str,
-    year: int | None = None,
+    start: date | None = None,
+    end: date | None = None,
     page_size: int = 100,
     max_pages: int = 3,
 ) -> list[SpecialDate]:
-    """Return events for ``country_code``, optionally bounded to ``year``.
-
-    Pages through results (``page_size`` per page, up to ``max_pages``) and
-    stops early once the last page is reached.
-    """
+    """Return events for ``country_code``, optionally bounded to ``[start, end]``."""
     country_code = country_code.upper()
     events: list[SpecialDate] = []
 
@@ -43,9 +49,10 @@ def fetch_events(
             "page": page,
             "sort": "date,asc",
         }
-        if year is not None:
-            params["startDateTime"] = f"{year}-01-01T00:00:00Z"
-            params["endDateTime"] = f"{year}-12-31T23:59:59Z"
+        if start is not None:
+            params["startDateTime"] = f"{start.isoformat()}T00:00:00Z"
+        if end is not None:
+            params["endDateTime"] = f"{end.isoformat()}T23:59:59Z"
 
         data = get_json(API_URL, params=params)
         page_events = data.get("_embedded", {}).get("events", [])
@@ -65,10 +72,7 @@ def fetch_events(
 
 
 def _parse_event(raw: dict, country_code: str) -> SpecialDate | None:
-    """Map one Discovery API event object to a :class:`SpecialDate`.
-
-    Returns ``None`` for records missing a name or a usable start date.
-    """
+    """Map one Discovery API event object to a :class:`SpecialDate`."""
     name = raw.get("name")
     if not name:
         return None
@@ -91,21 +95,40 @@ def _parse_event(raw: dict, country_code: str) -> SpecialDate | None:
     if end_date < start_date:  # never emit a backwards range
         end_date = start_date
 
+    city, lat, lon = _venue(raw)
     return SpecialDate(
         event=name,
         start_date=start_date,
         end_date=end_date,
-        city=_venue_city(raw),
-        category="event",
+        city=city,
+        category=_category(raw),
         country=country_code,
         source="ticketmaster",
+        lat=lat,
+        lon=lon,
     )
 
 
-def _venue_city(raw: dict) -> str:
-    """First non-empty venue city for an event, or ``"Unknown"``."""
+def _venue(raw: dict) -> tuple[str, float | None, float | None]:
+    """First venue's city and coordinates, or ``("Unknown", None, None)``."""
     for venue in raw.get("_embedded", {}).get("venues", []):
         city = (venue.get("city") or {}).get("name")
         if city:
-            return city
-    return "Unknown"
+            location = venue.get("location") or {}
+            return city, _to_float(location.get("latitude")), _to_float(location.get("longitude"))
+    return "Unknown", None, None
+
+
+def _category(raw: dict) -> str:
+    classifications = raw.get("classifications") or []
+    if classifications:
+        segment = (classifications[0].get("segment") or {}).get("name")
+        return _SEGMENT_CATEGORY.get(segment, "event")
+    return "event"
+
+
+def _to_float(value) -> float | None:
+    try:
+        return float(value) if value is not None else None
+    except (TypeError, ValueError):
+        return None
