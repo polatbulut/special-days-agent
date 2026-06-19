@@ -1,3 +1,4 @@
+import json
 import os
 import tempfile
 import unittest
@@ -8,15 +9,22 @@ from openpyxl import load_workbook
 from special_days.models import SpecialDate
 from special_days.xlsx_writer import write_xlsx
 
-HEADER = ["Event", "Start date", "End date", "City", "Nearest airport", "Impact"]
+HEADER = [
+    "Event", "Start date", "End date", "City", "Nearest airport", "Impact",
+    "Bridge start", "Bridge end", "Impact by day", "Impact by day (bridge)",
+]
 
 
-def make(event, city, start="2026-07-01", end=None, airport=None, impact=None):
+def make(event, city, start="2026-07-01", end=None, airport=None, impact=None,
+         bstart=None, bend=None, by_day=None, by_day_bridge=None):
     s = date.fromisoformat(start)
     e = date.fromisoformat(end) if end else s
     return SpecialDate(
         event, s, e, city, "event", "TR", "ticketmaster",
         nearest_airport=airport, impact_score=impact,
+        bridge_start=date.fromisoformat(bstart) if bstart else None,
+        bridge_end=date.fromisoformat(bend) if bend else None,
+        impact_by_day=by_day, impact_by_day_bridge=by_day_bridge,
     )
 
 
@@ -49,7 +57,23 @@ class XlsxWriterTest(unittest.TestCase):
     def test_freeze_panes_and_autofilter(self):
         sheet = self._write_and_load([make("A", "X"), make("B", "Y")])
         self.assertEqual(sheet.freeze_panes, "A2")
-        self.assertEqual(sheet.auto_filter.ref, "A1:F3")  # header + 2 rows, 6 cols
+        self.assertEqual(sheet.auto_filter.ref, "A1:J3")  # header + 2 rows, 10 cols
+
+    def test_bridge_dates_and_weight_json_cells(self):
+        sheet = self._write_and_load([
+            make("Ramazan Bayramı", "Nationwide (TR)", "2027-03-08", "2027-03-11",
+                 impact=99, bstart="2027-03-06", bend="2027-03-14",
+                 by_day=(("2027-03-08", 99), ("2027-03-09", 75)),
+                 by_day_bridge=(("2027-03-06", 99),)),
+        ])
+        # Bridge dates are real date cells with the date number format.
+        g2 = sheet["G2"]
+        self.assertEqual((g2.value.year, g2.value.month, g2.value.day), (2027, 3, 6))
+        self.assertEqual(g2.number_format, "yyyy-mm-dd")
+        self.assertEqual((sheet["H2"].value.year, sheet["H2"].value.month), (2027, 3))
+        # Weight lists are JSON strings.
+        self.assertEqual(json.loads(sheet["I2"].value), {"2027-03-08": 99, "2027-03-09": 75})
+        self.assertEqual(json.loads(sheet["J2"].value), {"2027-03-06": 99})
 
     def test_empty_rows_still_valid(self):
         sheet = self._write_and_load([])

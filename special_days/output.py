@@ -1,8 +1,11 @@
 """Render collected :class:`SpecialDate` records in the requested format.
 
-The headline output is six columns:
+The headline output is eight columns:
 
     Event — Start date — End date — City — Nearest airport — Impact
+    — Bridge start — Bridge end
+
+csv/xlsx/json additionally carry the two per-day weight lists.
 """
 
 from __future__ import annotations
@@ -13,11 +16,14 @@ import json
 
 from .models import SpecialDate
 
-HEADERS = ("Event", "Start date", "End date", "City", "Nearest airport", "Impact")
+HEADERS = (
+    "Event", "Start date", "End date", "City", "Nearest airport", "Impact",
+    "Bridge start", "Bridge end",
+)
 
 
 def render_table(rows: list[SpecialDate]) -> str:
-    """Aligned, human-readable table of the six headline fields."""
+    """Aligned, human-readable table of the eight headline fields."""
     if not rows:
         return "No special dates found."
 
@@ -35,12 +41,19 @@ def render_table(rows: list[SpecialDate]) -> str:
 
 
 def render_csv(rows: list[SpecialDate]) -> str:
-    """CSV with the six headline columns."""
+    """CSV with the eight headline columns plus the two per-day weight lists."""
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["event", "start_date", "end_date", "city", "nearest_airport", "impact"])
+    writer.writerow([
+        "event", "start_date", "end_date", "city", "nearest_airport", "impact",
+        "bridge_start", "bridge_end", "impact_by_day", "impact_by_day_bridge",
+    ])
     for r in rows:
-        writer.writerow(r.core_row())
+        writer.writerow([
+            *r.core_row(),
+            json.dumps(dict(r.impact_by_day or ()), ensure_ascii=False),
+            json.dumps(dict(r.impact_by_day_bridge or ()), ensure_ascii=False),
+        ])
     return buffer.getvalue().rstrip("\n")
 
 

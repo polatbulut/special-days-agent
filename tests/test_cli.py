@@ -41,6 +41,16 @@ class CollectTest(unittest.TestCase):
         with self.assertRaises(SystemExit):
             cli.build_parser().parse_args(["--start", "not-a-date"])
 
+    def test_impact_scorer_choice_validated(self):
+        with self.assertRaises(SystemExit):
+            cli.build_parser().parse_args(["--impact-scorer", "bogus"])
+
+    def test_llm_scorer_without_key_errors_cleanly(self):
+        # get_scorer("llm") raises before any collection runs -> exit 2, no network.
+        with mock.patch("special_days.cli.get_anthropic_key", return_value=None):
+            rc = cli.main(["--agent", "turkey", "--source", "holidays", "--impact-scorer", "llm"])
+        self.assertEqual(rc, 2)
+
     def test_output_creates_missing_parent_dirs(self):
         rows = [holiday("Yılbaşı", "TR")]
         with tempfile.TemporaryDirectory() as tmp:
