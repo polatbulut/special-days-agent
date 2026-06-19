@@ -82,18 +82,11 @@ date cells and a numeric impact column (built with `openpyxl`). Missing parent
 directories are created automatically. If `--output` is omitted it defaults to
 `special_days_<start>_<end>.xlsx`.
 
-## Weekly automation (GitHub Actions)
+## Scheduling
 
-`.github/workflows/weekly.yml` runs **every Monday in the cloud** (no machine of
-yours required), generates the next-12-months Excel and uploads it as a
-downloadable **artifact** (`special-days-xlsx`). One-time setup:
-
-1. Push the repo to GitHub.
-2. Add a repo secret **`TICKETMASTER_API_KEY`** under *Settings → Secrets and
-   variables → Actions* (without it, holidays are still produced; events are
-   skipped).
-
-You can also trigger it manually from the Actions tab (*Run workflow*).
+The rolling window (`--months`) makes this a drop-in for any scheduler — wire
+the command up to run as often as you like (cron, CI, a task runner, …). No
+scheduler is bundled.
 
 ## CLI
 
@@ -174,7 +167,6 @@ special_days/
   xlsx_writer.py   Excel (.xlsx) writer (openpyxl)
   cli.py           argument parsing + orchestration
 tests/             unittest suite (no network)
-.github/workflows/weekly.yml   weekly cloud run → xlsx artifact
 Dockerfile · Makefile · requirements.txt
 ```
 
