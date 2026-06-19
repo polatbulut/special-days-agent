@@ -6,25 +6,34 @@ from special_days.models import SpecialDate
 from special_days.output import render_csv, render_json, render_table
 
 
-def make(event="Concert", start="2026-07-01", end=None, city="Istanbul"):
+def make(event="Concert", start="2026-07-01", end=None, city="Istanbul", airport=None, impact=None):
     s = date.fromisoformat(start)
     e = date.fromisoformat(end) if end else s
-    return SpecialDate(event, s, e, city, "event", "TR", "ticketmaster")
+    return SpecialDate(
+        event, s, e, city, "event", "TR", "ticketmaster",
+        nearest_airport=airport, impact_score=impact,
+    )
 
 
 class SpecialDateTest(unittest.TestCase):
-    def test_core_row_is_the_four_headline_fields(self):
-        row = make(event="Bayram", start="2026-03-20", end="2026-03-22", city="Nationwide (TR)")
+    def test_core_row_is_the_six_headline_fields(self):
+        row = make(
+            event="Bayram", start="2026-03-20", end="2026-03-22",
+            city="Nationwide (TR)", airport="IST", impact=88,
+        )
         self.assertEqual(
             row.core_row(),
-            ("Bayram", "2026-03-20", "2026-03-22", "Nationwide (TR)"),
+            ("Bayram", "2026-03-20", "2026-03-22", "Nationwide (TR)", "IST", "88"),
         )
 
+    def test_core_row_blanks_for_missing_enrichment(self):
+        self.assertEqual(make(event="X").core_row()[4:], ("", ""))
+
     def test_to_dict_serialises_dates_as_iso_strings(self):
-        d = make().to_dict()
+        d = make(airport="IST", impact=50).to_dict()
         self.assertEqual(d["start_date"], "2026-07-01")
-        self.assertEqual(d["end_date"], "2026-07-01")
-        self.assertEqual(d["category"], "event")
+        self.assertEqual(d["nearest_airport"], "IST")
+        self.assertEqual(d["impact_score"], 50)
 
     def test_sort_key_orders_by_date_then_name(self):
         rows = [make(event="B", start="2026-07-02"), make(event="A", start="2026-07-01")]
@@ -35,19 +44,20 @@ class SpecialDateTest(unittest.TestCase):
 class OutputTest(unittest.TestCase):
     def setUp(self):
         self.rows = [
-            make(event="New Year", start="2026-01-01", city="Nationwide (TR)"),
-            make(event="Festival", start="2026-07-01", end="2026-07-03", city="İzmir"),
+            make(event="New Year", start="2026-01-01", city="Nationwide (TR)", impact=70),
+            make(event="Festival", start="2026-07-01", end="2026-07-03", city="İzmir", airport="ADB", impact=63),
         ]
 
-    def test_csv_has_header_and_four_columns(self):
+    def test_csv_has_six_column_header_and_rows(self):
         out = render_csv(self.rows)
         lines = out.splitlines()
-        self.assertEqual(lines[0], "event,start_date,end_date,city")
-        self.assertIn("Festival,2026-07-01,2026-07-03,İzmir", out)
+        self.assertEqual(lines[0], "event,start_date,end_date,city,nearest_airport,impact")
+        self.assertIn("Festival,2026-07-01,2026-07-03,İzmir,ADB,63", out)
 
-    def test_table_includes_event_and_city(self):
+    def test_table_includes_event_and_new_columns(self):
         out = render_table(self.rows)
-        self.assertIn("Event", out)
+        self.assertIn("Nearest airport", out)
+        self.assertIn("Impact", out)
         self.assertIn("Festival", out)
         self.assertIn("2 special date(s).", out)
 
@@ -58,6 +68,7 @@ class OutputTest(unittest.TestCase):
         parsed = json.loads(render_json(self.rows))
         self.assertEqual(len(parsed), 2)
         self.assertEqual(parsed[0]["event"], "New Year")
+        self.assertEqual(parsed[1]["nearest_airport"], "ADB")
 
 
 if __name__ == "__main__":

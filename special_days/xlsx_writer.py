@@ -1,8 +1,9 @@
 """Excel (``.xlsx``) writer, built on openpyxl.
 
-Produces a single "Special Dates" sheet with the four headline columns
-(Event, Start date, End date, City), a bold + frozen header row, an
-auto-filter, real Excel date cells and sensible column widths.
+Produces a single "Special Dates" sheet with the six headline columns
+(Event, Start date, End date, City, Nearest airport, Impact), a bold +
+frozen header row, an auto-filter, real Excel date cells and sensible
+column widths.
 
 openpyxl is imported lazily so the other output formats (table/csv/json)
 keep working even if it is not installed.
@@ -13,7 +14,7 @@ from __future__ import annotations
 from .models import SpecialDate
 from .output import HEADERS
 
-_COLUMN_WIDTHS = {"A": 55, "B": 14, "C": 14, "D": 24}
+_COLUMN_WIDTHS = {"A": 50, "B": 13, "C": 13, "D": 22, "E": 15, "F": 8}
 
 
 def write_xlsx(rows: list[SpecialDate], path: str) -> None:
@@ -37,6 +38,8 @@ def write_xlsx(rows: list[SpecialDate], path: str) -> None:
                 special_date.start_date,  # real date cell
                 special_date.end_date,  # real date cell
                 special_date.city,
+                special_date.nearest_airport or "",
+                special_date.impact_score,  # numeric cell (or None)
             ]
         )
 

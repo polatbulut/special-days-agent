@@ -1,16 +1,18 @@
 """Command-line entry point for the special-days agents.
 
+The agent collects a rolling forward window (default: the next 12 months) so a
+weekly job always looks ahead.
+
 Examples
 --------
-    # Turkey holidays for 2026 (no API key needed)
-    python -m special_days --agent turkey --year 2026 --source holidays
+    # Next 12 months, both agents, as an Excel file (events need the key)
+    python -m special_days --agent both --format xlsx -o out/special_days.xlsx
 
-    # Everything both agents can find (events need TICKETMASTER_API_KEY)
-    python -m special_days --agent both --year 2026
+    # Turkey holidays only, next 6 months, to the terminal (no key needed)
+    python -m special_days --agent turkey --source holidays --months 6
 
-    # International holidays for specific markets, as CSV
-    python -m special_days --agent international --countries DE,GB,AE \\
-        --source holidays --format csv
+    # A specific window starting on a chosen date
+    python -m special_days --start 2026-09-01 --months 12 --format csv
 """
 
 from __future__ import annotations
@@ -23,10 +25,12 @@ from datetime import date
 
 from .agents import InternationalAgent, TurkeyAgent
 from .config import DEFAULT_INTERNATIONAL_COUNTRIES, load_dotenv
+from .enrich import DEFAULT_CATCHMENT_KM, DEFAULT_MAX_EVENT_SPAN_DAYS, drop_long_events, enrich
 from .models import SpecialDate
 from .output import render
+from .window import resolve_window
 
-DEFAULT_YEAR = date(2026, 1, 1).year  # avoids importing clock state into help text
+DEFAULT_MONTHS = 12
 
 
 def _non_negative_int(value: str) -> int:
@@ -34,6 +38,20 @@ def _non_negative_int(value: str) -> int:
     if number < 0:
         raise argparse.ArgumentTypeError("must be 0 or greater")
     return number
+
+
+def _positive_int(value: str) -> int:
+    number = int(value)
+    if number <= 0:
+        raise argparse.ArgumentTypeError("must be greater than 0")
+    return number
+
+
+def _iso_date(value: str) -> date:
+    try:
+        return date.fromisoformat(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("must be a date in YYYY-MM-DD format")
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -49,10 +67,16 @@ def build_parser() -> argparse.ArgumentParser:
         help="Which collector agent(s) to run (default: both).",
     )
     parser.add_argument(
-        "--year",
-        type=int,
-        default=DEFAULT_YEAR,
-        help=f"Calendar year to collect (default: {DEFAULT_YEAR}).",
+        "--start",
+        type=_iso_date,
+        default=None,
+        help="Window start date YYYY-MM-DD (default: today).",
+    )
+    parser.add_argument(
+        "--months",
+        type=_positive_int,
+        default=DEFAULT_MONTHS,
+        help=f"Window length in months from --start (default: {DEFAULT_MONTHS}).",
     )
     parser.add_argument(
         "--countries",
@@ -80,7 +104,22 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help=(
             "Write to this file instead of stdout. For --format xlsx a file is "
-            "always written (default: special_days_<year>.xlsx if omitted)."
+            "always written (default: special_days_<start>_<end>.xlsx if omitted)."
+        ),
+    )
+    parser.add_argument(
+        "--catchment-km",
+        type=float,
+        default=DEFAULT_CATCHMENT_KM,
+        help=f"Radius for nearest-airport mapping in km (default: {DEFAULT_CATCHMENT_KM:g}).",
+    )
+    parser.add_argument(
+        "--max-event-span-days",
+        type=_non_negative_int,
+        default=DEFAULT_MAX_EVENT_SPAN_DAYS,
+        help=(
+            "Drop events spanning more than this many days as noise "
+            f"(season tickets); 0 disables (default: {DEFAULT_MAX_EVENT_SPAN_DAYS})."
         ),
     )
     parser.add_argument(
@@ -110,7 +149,8 @@ def _agents_for(args: argparse.Namespace):
     return [TurkeyAgent(), InternationalAgent(countries=countries)]
 
 
-def collect(args: argparse.Namespace) -> list[SpecialDate]:
+def collect(args: argparse.Namespace, start: date, end: date) -> list[SpecialDate]:
+    """Collect and de-duplicate raw special dates within ``[start, end]``."""
     include_holidays = args.source in ("holidays", "all")
     include_events = args.source in ("events", "all")
 
@@ -118,26 +158,23 @@ def collect(args: argparse.Namespace) -> list[SpecialDate]:
     for agent in _agents_for(args):
         results.extend(
             agent.collect(
-                args.year,
+                start,
+                end,
                 include_holidays=include_holidays,
                 include_events=include_events,
             )
         )
 
     # The Turkey and International agents can overlap (e.g. TR passed in
-    # --countries while --agent both), so de-duplicate before sorting.
-    # SpecialDate is frozen/hashable, so dict.fromkeys preserves first-seen order.
-    results = list(dict.fromkeys(results))
-    results.sort(key=SpecialDate.sort_key)
-    if args.limit is not None:
-        results = results[: args.limit]
-    return results
+    # --countries while --agent both), so de-duplicate. SpecialDate is
+    # frozen/hashable, so dict.fromkeys preserves first-seen order.
+    return list(dict.fromkeys(results))
 
 
-def _xlsx_path(args: argparse.Namespace) -> str:
+def _xlsx_path(args: argparse.Namespace, start: date, end: date) -> str:
     if args.output:
         return args.output if args.output.lower().endswith(".xlsx") else f"{args.output}.xlsx"
-    return f"special_days_{args.year}.xlsx"
+    return f"special_days_{start.isoformat()}_{end.isoformat()}.xlsx"
 
 
 def _ensure_parent(path: str) -> None:
@@ -154,12 +191,20 @@ def main(argv: list[str] | None = None) -> int:
     )
     load_dotenv()
 
-    rows = collect(args)
+    start, end = resolve_window(args.start, args.months)
+    logging.getLogger(__name__).info("Collecting window %s -> %s", start, end)
+
+    rows = collect(args, start, end)
+    rows = drop_long_events(rows, args.max_event_span_days)
+    rows = enrich(rows, catchment_km=args.catchment_km)
+    rows.sort(key=SpecialDate.sort_key)
+    if args.limit is not None:
+        rows = rows[: args.limit]
 
     if args.format == "xlsx":
         from .xlsx_writer import write_xlsx
 
-        path = _xlsx_path(args)
+        path = _xlsx_path(args, start, end)
         _ensure_parent(path)
         write_xlsx(rows, path)
         print(f"Wrote {len(rows)} special date(s) to {path}")

@@ -1,8 +1,8 @@
 """Render collected :class:`SpecialDate` records in the requested format.
 
-The headline output is exactly what the business asked for:
+The headline output is six columns:
 
-    Event  —  start date  —  end date  —  city
+    Event — Start date — End date — City — Nearest airport — Impact
 """
 
 from __future__ import annotations
@@ -13,11 +13,11 @@ import json
 
 from .models import SpecialDate
 
-HEADERS = ("Event", "Start date", "End date", "City")
+HEADERS = ("Event", "Start date", "End date", "City", "Nearest airport", "Impact")
 
 
 def render_table(rows: list[SpecialDate]) -> str:
-    """Aligned, human-readable table of the four headline fields."""
+    """Aligned, human-readable table of the six headline fields."""
     if not rows:
         return "No special dates found."
 
@@ -35,10 +35,10 @@ def render_table(rows: list[SpecialDate]) -> str:
 
 
 def render_csv(rows: list[SpecialDate]) -> str:
-    """CSV with the four headline columns: event,start_date,end_date,city."""
+    """CSV with the six headline columns."""
     buffer = io.StringIO()
     writer = csv.writer(buffer)
-    writer.writerow(["event", "start_date", "end_date", "city"])
+    writer.writerow(["event", "start_date", "end_date", "city", "nearest_airport", "impact"])
     for r in rows:
         writer.writerow(r.core_row())
     return buffer.getvalue().rstrip("\n")
