@@ -104,7 +104,7 @@ python -m special_days [options]
 --output, -o          write to a file instead of stdout (xlsx always writes a file)
 --catchment-km        nearest-airport radius in km      (default: 150)
 --max-event-span-days drop events longer than this; 0 = off (default: 30)
---impact-scorer       heuristic | openai | vllm         (default: heuristic)
+--impact-scorer       heuristic | openai | vllm | azure (default: heuristic)
 --llm-model           override the LLM model name (openai/vllm)
 --concurrency         parallel LLM scoring requests     (default: 8 llm / 1 heuristic)
 --limit               cap rows printed (after sorting by date)
@@ -171,14 +171,18 @@ model also returns **predicted attendance**; holiday rows leave attendance blank
   (default model `gpt-5-mini`); needs `OPENAI_API_KEY`.
 - `vllm` (`--impact-scorer vllm`): same prompts against any OpenAI-compatible vLLM
   server; needs `VLLM_BASE_URL` (+ `VLLM_MODEL`, optional `VLLM_API_KEY`).
+- `azure` (`--impact-scorer azure`): Azure OpenAI; needs `AZURE_OPENAI_ENDPOINT`
+  (e.g. `https://your-resource.openai.azure.com/`), `AZURE_OPENAI_API_KEY` and
+  `AZURE_OPENAI_DEPLOYMENT` (the deployment name; or pass `--llm-model`).
+  `AZURE_OPENAI_API_VERSION` is optional (default `2024-10-21`).
 
 > Predicted attendance is populated only by an LLM scorer (the heuristic leaves
 > it blank). Event prompts send the full payload, so input-token cost rises with
 > the feed size — scope LLM runs with `--source` / `--agent`.
 
-Both LLM backends share one OpenAI-compatible client
+All LLM backends share one OpenAI-compatible client
 ([`special_days/gateways.py`](special_days/gateways.py)); pick the model with
-`--llm-model`. Example:
+`--llm-model`. Examples:
 
 ```bash
 # OpenAI gpt-5-mini (set OPENAI_API_KEY in .env). Scope small for cost:
@@ -187,6 +191,9 @@ python -m special_days --agent turkey --source holidays --impact-scorer openai
 # A self-hosted vLLM model
 VLLM_BASE_URL=http://localhost:8000/v1 VLLM_MODEL=my-model \
   python -m special_days --agent turkey --source holidays --impact-scorer vllm
+
+# Azure OpenAI (endpoint + key + deployment in .env, or --llm-model for the deployment)
+python -m special_days --agent turkey --source holidays --impact-scorer azure
 ```
 
 The LLM scorer makes **one request per record**. Those calls run **concurrently**
