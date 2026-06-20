@@ -15,6 +15,7 @@ AZURE_OPENAI_ENDPOINT_ENV = "AZURE_OPENAI_ENDPOINT"
 AZURE_OPENAI_API_KEY_ENV = "AZURE_OPENAI_API_KEY"
 AZURE_OPENAI_DEPLOYMENT_ENV = "AZURE_OPENAI_DEPLOYMENT"
 AZURE_OPENAI_API_VERSION_ENV = "AZURE_OPENAI_API_VERSION"
+AZURE_OPENAI_MAX_COMPLETION_TOKENS_ENV = "AZURE_OPENAI_MAX_COMPLETION_TOKENS"
 
 # Default destination markets for the international agent. Kept short on
 # purpose — override with `--countries` on the CLI.
@@ -98,3 +99,14 @@ def get_azure_deployment() -> str | None:
 def get_azure_api_version() -> str | None:
     """Return the Azure OpenAI API version, or ``None`` (a default is used)."""
     return _env(AZURE_OPENAI_API_VERSION_ENV)
+
+
+def get_azure_max_completion_tokens() -> int | None:
+    """Return the Azure max_completion_tokens override, or ``None`` (a default is used)."""
+    raw = _env(AZURE_OPENAI_MAX_COMPLETION_TOKENS_ENV)
+    if raw is None:
+        return None
+    try:
+        return int(raw)
+    except ValueError:
+        return None

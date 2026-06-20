@@ -18,7 +18,14 @@ class ChatGatewayTest(unittest.TestCase):
         self.assertEqual(url, "https://api.openai.com/v1/chat/completions")
         self.assertEqual(payload["model"], "gpt-5-mini")
         self.assertEqual(payload["messages"], [{"role": "user", "content": "score this"}])
+        self.assertNotIn("max_completion_tokens", payload)  # omitted unless set
         self.assertEqual(post.call_args.kwargs["headers"]["Authorization"], "Bearer sk-abc")
+
+    def test_includes_max_completion_tokens_when_set(self):
+        gw = gateways.ChatGateway("http://x/chat/completions", "m", max_completion_tokens=512)
+        with mock.patch("special_days.gateways.post_json", return_value=OK_RESPONSE) as post:
+            gw("x")
+        self.assertEqual(post.call_args.args[1]["max_completion_tokens"], 512)
 
     def test_api_key_auth_uses_api_key_header(self):
         gw = gateways.ChatGateway("http://x/chat/completions", "m", api_key="k", auth="api-key")
@@ -80,10 +87,19 @@ class AzureGatewayTest(unittest.TestCase):
         with mock.patch("special_days.gateways.post_json", return_value=OK_RESPONSE) as post:
             gw("x")
         self.assertEqual(post.call_args.kwargs["headers"]["api-key"], "az-key")
+        # reasoning models need a generous completion budget
+        self.assertEqual(
+            post.call_args.args[1]["max_completion_tokens"],
+            gateways.DEFAULT_AZURE_MAX_COMPLETION_TOKENS,
+        )
 
     def test_default_api_version_used(self):
         gw = gateways.azure_gateway("https://acme.openai.azure.com", "dep", "k")
         self.assertIn(f"api-version={gateways.DEFAULT_AZURE_API_VERSION}", gw.url)
+
+    def test_max_completion_tokens_override(self):
+        gw = gateways.azure_gateway("https://x", "dep", "k", max_completion_tokens=512)
+        self.assertEqual(gw.max_completion_tokens, 512)
 
     def test_requires_endpoint_deployment_and_key(self):
         with self.assertRaises(ValueError):
