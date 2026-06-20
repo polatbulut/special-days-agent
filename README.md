@@ -144,8 +144,8 @@ Or via the Makefile: `make docker-run ARGS="--agent both --format xlsx -o out/sp
 
 Every source maps into one `SpecialDate` (see [`special_days/models.py`](special_days/models.py)).
 Output columns: Event, Start date, End date, City, Source (nager/diyanet/meb/
-ticketmaster), Nearest airport, Impact, Bridge start, Bridge end — plus two
-per-day weight lists (csv/xlsx/json).
+ticketmaster), Nearest airport, Impact, Predicted attendance, Bridge start,
+Bridge end — plus two per-day weight lists (csv/xlsx/json).
 
 **Bridge ranges (köprü).** For Turkish holidays, `bridge_start`/`bridge_end`
 ([`special_days/bridge.py`](special_days/bridge.py)) extend the statutory dates
@@ -159,15 +159,22 @@ E.g. Ramazan Bayramı 2027 `08–11 Mar` → bridge `06–14 Mar`.
 **Linear V** (peak at the departure/return ends, ~50% mid-break) with **weekends
 forced to the peak**. Example bridge curve: `99,99,74,62,50,62,74,99,99`.
 
-**Impact score** (the peak) comes from a pluggable scorer
-([`special_days/scoring.py`](special_days/scoring.py)) with per-scenario prompts
-(TR-holiday vs international vs event):
-- `heuristic` (default): transparent category + duration + airport-proximity score,
-  offline, no key.
+**Impact & predicted attendance** come from a pluggable scorer
+([`special_days/scoring.py`](special_days/scoring.py)) with **per-source prompts**
+(`nager` / `diyanet` / `meb` / `ticketmaster` each distinct). **Impact** (0-100,
+the curve peak) is framed as the effect on **Turkish Airlines ticket sales**.
+For **events**, the prompt embeds the **full raw Ticketmaster payload** and the
+model also returns **predicted attendance**; holiday rows leave attendance blank.
+- `heuristic` (default): offline category + duration + airport-proximity score,
+  no key, **no attendance**.
 - `openai` (`--impact-scorer openai`): scores each record via the OpenAI chat API
   (default model `gpt-5-mini`); needs `OPENAI_API_KEY`.
 - `vllm` (`--impact-scorer vllm`): same prompts against any OpenAI-compatible vLLM
   server; needs `VLLM_BASE_URL` (+ `VLLM_MODEL`, optional `VLLM_API_KEY`).
+
+> Predicted attendance is populated only by an LLM scorer (the heuristic leaves
+> it blank). Event prompts send the full payload, so input-token cost rises with
+> the feed size — scope LLM runs with `--source` / `--agent`.
 
 Both LLM backends share one OpenAI-compatible client
 ([`special_days/gateways.py`](special_days/gateways.py)); pick the model with
