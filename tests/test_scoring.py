@@ -112,6 +112,22 @@ class GetScorerTest(unittest.TestCase):
         s = scoring.get_scorer("vllm", vllm_base_url="http://x:8000/v1", model="my-model")
         self.assertIsInstance(s, scoring.LLMScorer)
 
+    def test_azure_requires_endpoint(self):
+        with self.assertRaises(ValueError):
+            scoring.get_scorer("azure", azure_endpoint=None, azure_api_key="k", model="dep")
+
+    def test_azure_requires_key(self):
+        with self.assertRaises(ValueError):
+            scoring.get_scorer(
+                "azure", azure_endpoint="https://x.openai.azure.com", azure_api_key=None, model="dep"
+            )
+
+    def test_azure_builds_llm_scorer(self):
+        s = scoring.get_scorer(
+            "azure", azure_endpoint="https://x.openai.azure.com", azure_api_key="k", model="dep"
+        )
+        self.assertIsInstance(s, scoring.LLMScorer)
+
     def test_unknown_scorer(self):
         with self.assertRaises(ValueError):
             scoring.get_scorer("nope")

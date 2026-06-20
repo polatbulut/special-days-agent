@@ -199,21 +199,27 @@ def get_scorer(
     openai_api_key: str | None = None,
     vllm_base_url: str | None = None,
     vllm_api_key: str | None = None,
+    azure_endpoint: str | None = None,
+    azure_api_key: str | None = None,
+    azure_api_version: str | None = None,
     model: str | None = None,
 ) -> Scorer:
-    """Factory: ``heuristic`` (default), ``openai`` or ``vllm``.
+    """Factory: ``heuristic`` (default), ``openai``, ``vllm`` or ``azure``.
 
     The LLM backends build the matching gateway (validating credentials) and
     wrap it in an :class:`LLMScorer`.
     """
     if name == "heuristic":
         return HeuristicScorer()
-    if name in ("openai", "vllm"):
+    if name in ("openai", "vllm", "azure"):
         gateway = make_gateway(
             name,
             openai_api_key=openai_api_key,
             vllm_base_url=vllm_base_url,
             vllm_api_key=vllm_api_key,
+            azure_endpoint=azure_endpoint,
+            azure_api_key=azure_api_key,
+            azure_api_version=azure_api_version,
             model=model,
         )
         return LLMScorer(gateway)
