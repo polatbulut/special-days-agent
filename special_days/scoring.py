@@ -202,6 +202,7 @@ def get_scorer(
     azure_endpoint: str | None = None,
     azure_api_key: str | None = None,
     azure_api_version: str | None = None,
+    azure_max_completion_tokens: int | None = None,
     model: str | None = None,
 ) -> Scorer:
     """Factory: ``heuristic`` (default), ``openai``, ``vllm`` or ``azure``.
@@ -220,6 +221,7 @@ def get_scorer(
             azure_endpoint=azure_endpoint,
             azure_api_key=azure_api_key,
             azure_api_version=azure_api_version,
+            azure_max_completion_tokens=azure_max_completion_tokens,
             model=model,
         )
         return LLMScorer(gateway)

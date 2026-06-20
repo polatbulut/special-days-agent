@@ -30,6 +30,7 @@ from .config import (
     get_azure_api_version,
     get_azure_deployment,
     get_azure_endpoint,
+    get_azure_max_completion_tokens,
     get_openai_key,
     get_vllm_api_key,
     get_vllm_base_url,
@@ -253,6 +254,7 @@ def main(argv: list[str] | None = None) -> int:
             azure_endpoint=get_azure_endpoint(),
             azure_api_key=get_azure_api_key(),
             azure_api_version=get_azure_api_version(),
+            azure_max_completion_tokens=get_azure_max_completion_tokens(),
             model=model,
         )
     except ValueError as exc:
