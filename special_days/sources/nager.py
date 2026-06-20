@@ -52,6 +52,7 @@ def fetch_holidays(country_code: str, year: int, prefer_local_name: bool = True)
                 category="public_holiday",
                 country=country_code,
                 source="nager",
+                raw=item,
             )
         )
     return holidays

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from datetime import date
 
 
@@ -10,15 +10,16 @@ from datetime import date
 class SpecialDate:
     """One special date.
 
-    The headline output is nine columns:
+    The headline output is ten columns:
 
         Event — Start date — End date — City — Source — Nearest airport
-        — Impact — Bridge start — Bridge end
+        — Impact — Predicted attendance — Bridge start — Bridge end
 
     The first four are the original business ask; ``source``, ``nearest_airport``,
-    ``impact_score`` and the köprü ``bridge_*`` / per-day ``impact_by_day*``
-    fields come from the enrichment stage. The remaining fields (``category``,
-    ``country``, ``source``, ``lat``/``lon``, ``airport_distance_km``) aid
+    ``impact_score``, ``predicted_attendance`` and the köprü ``bridge_*`` /
+    per-day ``impact_by_day*`` fields come from the enrichment stage. ``raw`` is
+    the source payload kept for LLM prompting (excluded from output). The rest
+    (``category``, ``country``, ``lat``/``lon``, ``airport_distance_km``) aid
     traceability and are emitted in JSON.
     """
 
@@ -34,6 +35,7 @@ class SpecialDate:
     nearest_airport: str | None = None  # IATA code (enrichment)
     airport_distance_km: float | None = None  # enrichment
     impact_score: int | None = None  # 0-100 peak (enrichment)
+    predicted_attendance: int | None = None  # events only (LLM scorer)
     bridge_start: date | None = None  # köprü-extended block (enrichment)
     bridge_end: date | None = None
     # Per-day weight curves, stored as hashable tuples of (iso_date, weight);
@@ -41,6 +43,9 @@ class SpecialDate:
     # hashable, which the pre-enrichment de-dup (dict.fromkeys) relies on.
     impact_by_day: tuple[tuple[str, int], ...] | None = None  # over statutory range
     impact_by_day_bridge: tuple[tuple[str, int], ...] | None = None  # over bridge range
+    # The source's raw payload, kept for LLM prompting. compare=False keeps the
+    # frozen record hashable (dict is unhashable) and out of de-dup/equality.
+    raw: dict | None = field(default=None, compare=False, repr=False)
 
     def is_tr_holiday(self) -> bool:
         """True for Turkish holidays (the records that get bridged/curved)."""
@@ -49,8 +54,8 @@ class SpecialDate:
     def sort_key(self) -> tuple[date, str]:
         return (self.start_date, self.event.lower())
 
-    def core_row(self) -> tuple[str, str, str, str, str, str, str, str, str]:
-        """The nine headline fields as strings (no per-day JSON lists)."""
+    def core_row(self) -> tuple[str, ...]:
+        """The ten headline fields as strings (no per-day JSON lists)."""
         return (
             self.event,
             self.start_date.isoformat(),
@@ -59,12 +64,14 @@ class SpecialDate:
             self.source,
             self.nearest_airport or "",
             "" if self.impact_score is None else str(self.impact_score),
+            "" if self.predicted_attendance is None else str(self.predicted_attendance),
             self.bridge_start.isoformat() if self.bridge_start else "",
             self.bridge_end.isoformat() if self.bridge_end else "",
         )
 
     def to_dict(self) -> dict:
         data = asdict(self)
+        data.pop("raw", None)  # the full payload is for prompting, not output
         data["start_date"] = self.start_date.isoformat()
         data["end_date"] = self.end_date.isoformat()
         data["bridge_start"] = self.bridge_start.isoformat() if self.bridge_start else None

@@ -4,6 +4,7 @@ from datetime import date
 
 from special_days import enrich
 from special_days.models import SpecialDate
+from special_days.scoring import ScoreResult
 
 
 def event(city, lat, lon, start="2026-07-01", end=None, category="concert"):
@@ -92,12 +93,25 @@ class EnrichTest(unittest.TestCase):
         self.assertIsNone(out.nearest_airport)
         self.assertIsInstance(out.impact_score, int)
 
+    def test_attendance_flows_from_scorer(self):
+        class AttendanceScorer:
+            def score(self, record):
+                return ScoreResult(70, 12345)
+
+        [out] = enrich.enrich([event("İstanbul", 41.0, 29.0)], scorer=AttendanceScorer())
+        self.assertEqual(out.impact_score, 70)
+        self.assertEqual(out.predicted_attendance, 12345)
+
+    def test_heuristic_leaves_attendance_blank(self):
+        [out] = enrich.enrich([event("İstanbul", 41.0, 29.0)])
+        self.assertIsNone(out.predicted_attendance)
+
 
 class _DayScorer:
     """Returns the start day, so results depend on (and reveal) record order."""
 
     def score(self, record):
-        return record.start_date.day
+        return ScoreResult(record.start_date.day, None)
 
 
 class ConcurrencyTest(unittest.TestCase):
@@ -118,7 +132,7 @@ class ConcurrencyTest(unittest.TestCase):
         class BarrierScorer:
             def score(self, record):
                 barrier.wait()  # times out (BrokenBarrierError) if scoring were sequential
-                return 50
+                return ScoreResult(50, None)
 
         out = enrich.enrich(self._records(n), scorer=BarrierScorer(), concurrency=n)
         self.assertEqual([r.impact_score for r in out], [50] * n)

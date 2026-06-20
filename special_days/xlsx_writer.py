@@ -1,9 +1,10 @@
 """Excel (``.xlsx``) writer, built on openpyxl.
 
-Produces a single "Special Dates" sheet: the nine headline columns (Event,
-Start date, End date, City, Source, Nearest airport, Impact, Bridge start,
-Bridge end) plus two per-day weight columns (Impact by day, Impact by day
-(bridge)) as JSON strings. Bold + frozen header, auto-filter, real date cells.
+Produces a single "Special Dates" sheet: the ten headline columns (Event,
+Start date, End date, City, Source, Nearest airport, Impact, Predicted
+attendance, Bridge start, Bridge end) plus two per-day weight columns (Impact
+by day, Impact by day (bridge)) as JSON strings. Bold + frozen header,
+auto-filter, real date cells.
 """
 
 from __future__ import annotations
@@ -14,10 +15,10 @@ from .models import SpecialDate
 from .output import HEADERS
 
 _JSON_HEADERS = ["Impact by day", "Impact by day (bridge)"]
-_DATE_COLUMNS = (2, 3, 8, 9)  # Start, End, Bridge start, Bridge end
+_DATE_COLUMNS = (2, 3, 9, 10)  # Start, End, Bridge start, Bridge end
 _COLUMN_WIDTHS = {
     "A": 44, "B": 12, "C": 12, "D": 20, "E": 14, "F": 15, "G": 8,
-    "H": 12, "I": 12, "J": 58, "K": 58,
+    "H": 12, "I": 12, "J": 12, "K": 58, "L": 58,
 }
 
 
@@ -46,6 +47,7 @@ def write_xlsx(rows: list[SpecialDate], path: str) -> None:
                 sd.source,
                 sd.nearest_airport or "",
                 sd.impact_score,  # numeric cell
+                sd.predicted_attendance,  # numeric cell (blank without LLM)
                 sd.bridge_start,  # real date cell
                 sd.bridge_end,  # real date cell
                 json.dumps(dict(sd.impact_by_day or ()), ensure_ascii=False),

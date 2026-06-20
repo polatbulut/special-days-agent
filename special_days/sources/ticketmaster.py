@@ -106,6 +106,7 @@ def _parse_event(raw: dict, country_code: str) -> SpecialDate | None:
         source="ticketmaster",
         lat=lat,
         lon=lon,
+        raw=raw,
     )
 
 

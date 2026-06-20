@@ -10,67 +10,83 @@ def holiday(category="religious_holiday", source="diyanet", country="TR", start=
                        "Nationwide (TR)", category, country, source)
 
 
-def event(category="concert", distance=None, lat=41.0, lon=29.0):
+def event(category="concert", distance=None, lat=41.0, lon=29.0, raw=None):
     return SpecialDate("E", date(2026, 7, 1), date(2026, 7, 1), "İstanbul",
                        category, "TR", "ticketmaster", lat=lat, lon=lon,
                        nearest_airport="IST" if distance is not None else None,
-                       airport_distance_km=distance)
+                       airport_distance_km=distance, raw=raw or {"name": "E", "id": "abc"})
 
 
 class HeuristicScorerTest(unittest.TestCase):
     def setUp(self):
         self.scorer = scoring.HeuristicScorer()
 
-    def test_returns_int_0_100(self):
-        s = self.scorer.score(holiday())
-        self.assertIsInstance(s, int)
-        self.assertTrue(0 <= s <= 100)
+    def test_returns_score_result_int_impact_no_attendance(self):
+        r = self.scorer.score(holiday())
+        self.assertIsInstance(r, scoring.ScoreResult)
+        self.assertIsInstance(r.impact, int)
+        self.assertTrue(0 <= r.impact <= 100)
+        self.assertIsNone(r.attendance)  # heuristic never predicts attendance
 
     def test_religious_outranks_concert(self):
-        self.assertGreater(self.scorer.score(holiday()), self.scorer.score(event()))
+        self.assertGreater(self.scorer.score(holiday()).impact, self.scorer.score(event()).impact)
 
     def test_close_airport_boosts(self):
         self.assertGreater(
-            self.scorer.score(event(distance=10)), self.scorer.score(event(distance=None))
+            self.scorer.score(event(distance=10)).impact,
+            self.scorer.score(event(distance=None)).impact,
         )
 
 
-class LLMScorerTest(unittest.TestCase):
-    def test_scenario_routing(self):
-        s = scoring.LLMScorer(lambda p: "50")
-        self.assertEqual(s._scenario(holiday()), "tr_holiday")
-        self.assertEqual(s._scenario(holiday(source="nager", country="DE")), "intl_holiday")
-        self.assertEqual(s._scenario(event()), "event")
+class PromptRoutingTest(unittest.TestCase):
+    def setUp(self):
+        self.scorer = scoring.LLMScorer(lambda p: '{"impact": 50}')
 
-    def test_prompt_differs_by_scenario(self):
-        s = scoring.LLMScorer(lambda p: "50")
-        self.assertNotEqual(s._build_prompt(holiday()), s._build_prompt(event()))
-        self.assertIn("Turkish", s._build_prompt(holiday()))
+    def test_per_source_prompts_all_differ(self):
+        prompts = [self.scorer._build_prompt(holiday(source=s)) for s in ("nager", "diyanet", "meb")]
+        prompts.append(self.scorer._build_prompt(event()))
+        self.assertEqual(len(set(prompts)), 4)
 
-    def test_injected_model_is_used_and_parsed(self):
-        calls = []
+    def test_ticketmaster_prompt_embeds_payload_and_asks_attendance(self):
+        p = self.scorer._build_prompt(event(raw={"name": "Tarkan", "id": "XYZ123"}))
+        self.assertIn("XYZ123", p)  # full payload embedded
+        self.assertIn("attendance", p.lower())
 
-        def fake(prompt):
-            calls.append(prompt)
-            return "Based on the details, I rate this 87"
+    def test_holiday_prompt_is_impact_only_and_mentions_thy(self):
+        p = self.scorer._build_prompt(holiday(source="nager", country="DE"))
+        self.assertIn("Turkish Airlines", p)
+        self.assertNotIn("attendance", p.lower())
 
-        self.assertEqual(scoring.LLMScorer(fake).score(holiday()), 87)
-        self.assertEqual(len(calls), 1)
-        self.assertIn("0-100", calls[0])  # the built prompt was passed through
 
-    def test_parse_bare_integer(self):
-        self.assertEqual(scoring.LLMScorer(lambda p: "87").score(holiday()), 87)
+class LLMScoreTest(unittest.TestCase):
+    def test_event_returns_attendance_and_impact(self):
+        r = scoring.LLMScorer(lambda p: '{"attendance": 8000, "impact": 70}').score(event())
+        self.assertEqual((r.impact, r.attendance), (70, 8000))
 
-    def test_parse_ignores_year_in_reply(self):
-        self.assertEqual(scoring.LLMScorer(lambda p: "In 2026 I rate this 90").score(holiday()), 90)
-        self.assertEqual(scoring.LLMScorer(lambda p: "For 2026-01-01: 85").score(holiday()), 85)
+    def test_holiday_attendance_forced_none(self):
+        # even if the model returns an attendance, holidays must stay null
+        r = scoring.LLMScorer(lambda p: '{"attendance": 999, "impact": 60}').score(
+            holiday(source="nager", country="DE")
+        )
+        self.assertEqual(r.impact, 60)
+        self.assertIsNone(r.attendance)
 
-    def test_parse_clamps(self):
-        self.assertEqual(scoring.LLMScorer(lambda p: "250").score(holiday()), 100)
+    def test_code_fenced_json(self):
+        r = scoring.LLMScorer(lambda p: '```json\n{"attendance": 5000, "impact": 42}\n```').score(event())
+        self.assertEqual((r.impact, r.attendance), (42, 5000))
 
-    def test_parse_raises_on_no_number(self):
+    def test_impact_clamped(self):
+        self.assertEqual(scoring.LLMScorer(lambda p: '{"impact": 250}').score(event()).impact, 100)
+
+    def test_fallback_bare_integer(self):
+        self.assertEqual(scoring.LLMScorer(lambda p: "87").score(event()).impact, 87)
+
+    def test_fallback_ignores_year_in_reply(self):
+        self.assertEqual(scoring.LLMScorer(lambda p: "In 2026 I rate this 90").score(event()).impact, 90)
+
+    def test_raises_on_no_number(self):
         with self.assertRaises(ValueError):
-            scoring.LLMScorer(lambda p: "n/a").score(holiday())
+            scoring.LLMScorer(lambda p: "n/a").score(event())
 
 
 class GetScorerTest(unittest.TestCase):
