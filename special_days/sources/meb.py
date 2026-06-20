@@ -37,6 +37,7 @@ def fetch_in_window(start: date, end: date) -> list[SpecialDate]:
                     category="school_holiday",
                     country="TR",
                     source="meb",
+                    raw=item,
                 )
             )
     return breaks

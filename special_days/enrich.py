@@ -16,7 +16,7 @@ from . import curve
 from .bridge import compute_bridge
 from .dataset import load_airports
 from .models import SpecialDate
-from .scoring import HeuristicScorer, Scorer
+from .scoring import HeuristicScorer, ScoreResult, Scorer
 
 DEFAULT_CATCHMENT_KM = 150.0
 DEFAULT_MAX_EVENT_SPAN_DAYS = 30
@@ -56,7 +56,7 @@ def impact_score(record: SpecialDate, airport_distance_km: float | None) -> int:
     """
     return HeuristicScorer().score(
         dataclasses.replace(record, airport_distance_km=airport_distance_km)
-    )
+    ).impact
 
 
 def drop_long_events(
@@ -87,7 +87,7 @@ def _map_airport(record: SpecialDate, catchment_km: float) -> SpecialDate:
     return dataclasses.replace(record, nearest_airport=iata, airport_distance_km=distance)
 
 
-def _score_all(records: list[SpecialDate], scorer: Scorer, concurrency: int) -> list[int]:
+def _score_all(records: list[SpecialDate], scorer: Scorer, concurrency: int) -> list[ScoreResult]:
     """Score every record, preserving order.
 
     Runs the scorer concurrently when ``concurrency > 1`` — useful for the
@@ -120,16 +120,18 @@ def enrich(
     mapped = [_map_airport(record, catchment_km) for record in records]
 
     # 2) scoring — the expensive step for LLM scorers; optionally concurrent.
-    peaks = _score_all(mapped, scorer, concurrency)
+    results = _score_all(mapped, scorer, concurrency)
 
-    # 3) bridges + per-day curves.
+    # 3) bridges + per-day curves (the impact drives the curve peak).
     enriched: list[SpecialDate] = []
-    for record, peak in zip(mapped, peaks):
+    for record, result in zip(mapped, results):
+        peak = result.impact
         bridge_start, bridge_end = compute_bridge(record)
         enriched.append(
             dataclasses.replace(
                 record,
                 impact_score=peak,
+                predicted_attendance=result.attendance,
                 bridge_start=bridge_start,
                 bridge_end=bridge_end,
                 impact_by_day=curve.weights(record.start_date, record.end_date, peak),

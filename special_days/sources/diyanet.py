@@ -41,6 +41,7 @@ def fetch_in_window(start: date, end: date) -> list[SpecialDate]:
                     category="religious_holiday",
                     country="TR",
                     source="diyanet",
+                    raw=item,
                 )
             )
     return holidays
