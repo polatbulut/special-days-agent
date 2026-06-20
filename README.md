@@ -174,7 +174,11 @@ model also returns **predicted attendance**; holiday rows leave attendance blank
 - `azure` (`--impact-scorer azure`): Azure OpenAI; needs `AZURE_OPENAI_ENDPOINT`
   (e.g. `https://your-resource.openai.azure.com/`), `AZURE_OPENAI_API_KEY` and
   `AZURE_OPENAI_DEPLOYMENT` (the deployment name; or pass `--llm-model`).
-  `AZURE_OPENAI_API_VERSION` is optional (default `2024-10-21`).
+  `AZURE_OPENAI_API_VERSION` is optional (default `2024-10-21`; reasoning models
+  like **gpt-5.1** need a preview version, e.g. `2024-12-01-preview`). A generous
+  `max_completion_tokens` (default 16384, override with
+  `AZURE_OPENAI_MAX_COMPLETION_TOKENS`) is sent so reasoning models don't return
+  empty content.
 
 > Predicted attendance is populated only by an LLM scorer (the heuristic leaves
 > it blank). Event prompts send the full payload, so input-token cost rises with
