@@ -79,6 +79,11 @@ class ResolveFormatTest(unittest.TestCase):
             rc = cli.main(["--agent", "turkey", "--source", "holidays", "--impact-scorer", "vllm"])
         self.assertEqual(rc, 2)
 
+    def test_azure_scorer_without_endpoint_errors_cleanly(self):
+        with mock.patch("special_days.cli.get_azure_endpoint", return_value=None):
+            rc = cli.main(["--agent", "turkey", "--source", "holidays", "--impact-scorer", "azure"])
+        self.assertEqual(rc, 2)
+
     def test_output_creates_missing_parent_dirs(self):
         rows = [holiday("Yılbaşı", "TR")]
         with tempfile.TemporaryDirectory() as tmp:

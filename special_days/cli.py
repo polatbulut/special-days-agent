@@ -26,6 +26,10 @@ from datetime import date
 from .agents import InternationalAgent, TurkeyAgent
 from .config import (
     DEFAULT_INTERNATIONAL_COUNTRIES,
+    get_azure_api_key,
+    get_azure_api_version,
+    get_azure_deployment,
+    get_azure_endpoint,
     get_openai_key,
     get_vllm_api_key,
     get_vllm_base_url,
@@ -132,17 +136,21 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--impact-scorer",
-        choices=["heuristic", "openai", "vllm"],
+        choices=["heuristic", "openai", "vllm", "azure"],
         default="heuristic",
         help=(
             "How to score impact (default: heuristic). 'openai' uses OPENAI_API_KEY "
-            "(model gpt-5-mini); 'vllm' uses VLLM_BASE_URL + VLLM_MODEL."
+            "(model gpt-5-mini); 'vllm' uses VLLM_BASE_URL + VLLM_MODEL; 'azure' uses "
+            "AZURE_OPENAI_ENDPOINT + AZURE_OPENAI_API_KEY + AZURE_OPENAI_DEPLOYMENT."
         ),
     )
     parser.add_argument(
         "--llm-model",
         default=None,
-        help="Override the LLM model (default: gpt-5-mini for openai; VLLM_MODEL for vllm).",
+        help=(
+            "Override the LLM model/deployment (default: gpt-5-mini for openai; "
+            "VLLM_MODEL for vllm; AZURE_OPENAI_DEPLOYMENT for azure)."
+        ),
     )
     parser.add_argument(
         "--concurrency",
@@ -234,12 +242,17 @@ def main(argv: list[str] | None = None) -> int:
     model = args.llm_model
     if args.impact_scorer == "vllm" and not model:
         model = get_vllm_model()
+    elif args.impact_scorer == "azure" and not model:
+        model = get_azure_deployment()
     try:
         scorer = get_scorer(
             args.impact_scorer,
             openai_api_key=get_openai_key(),
             vllm_base_url=get_vllm_base_url(),
             vllm_api_key=get_vllm_api_key(),
+            azure_endpoint=get_azure_endpoint(),
+            azure_api_key=get_azure_api_key(),
+            azure_api_version=get_azure_api_version(),
             model=model,
         )
     except ValueError as exc:

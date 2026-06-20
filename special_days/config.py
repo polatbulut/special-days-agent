@@ -11,6 +11,10 @@ OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
 VLLM_BASE_URL_ENV = "VLLM_BASE_URL"
 VLLM_API_KEY_ENV = "VLLM_API_KEY"
 VLLM_MODEL_ENV = "VLLM_MODEL"
+AZURE_OPENAI_ENDPOINT_ENV = "AZURE_OPENAI_ENDPOINT"
+AZURE_OPENAI_API_KEY_ENV = "AZURE_OPENAI_API_KEY"
+AZURE_OPENAI_DEPLOYMENT_ENV = "AZURE_OPENAI_DEPLOYMENT"
+AZURE_OPENAI_API_VERSION_ENV = "AZURE_OPENAI_API_VERSION"
 
 # Default destination markets for the international agent. Kept short on
 # purpose — override with `--countries` on the CLI.
@@ -74,3 +78,23 @@ def get_vllm_api_key() -> str | None:
 def get_vllm_model() -> str | None:
     """Return the default vLLM model name from the environment, or ``None``."""
     return _env(VLLM_MODEL_ENV)
+
+
+def get_azure_endpoint() -> str | None:
+    """Return the Azure OpenAI resource endpoint, or ``None``."""
+    return _env(AZURE_OPENAI_ENDPOINT_ENV)
+
+
+def get_azure_api_key() -> str | None:
+    """Return the Azure OpenAI API key, or ``None``."""
+    return _env(AZURE_OPENAI_API_KEY_ENV)
+
+
+def get_azure_deployment() -> str | None:
+    """Return the default Azure deployment name, or ``None``."""
+    return _env(AZURE_OPENAI_DEPLOYMENT_ENV)
+
+
+def get_azure_api_version() -> str | None:
+    """Return the Azure OpenAI API version, or ``None`` (a default is used)."""
+    return _env(AZURE_OPENAI_API_VERSION_ENV)
