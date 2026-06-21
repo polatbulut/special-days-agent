@@ -29,7 +29,7 @@ class SpecialDate:
     city: str
     category: str  # public_holiday | religious_holiday | school_holiday | concert | sports | arts | film | event
     country: str  # ISO-3166 alpha-2, e.g. "TR"
-    source: str  # nager | diyanet | meb | ticketmaster
+    source: str  # nager | diyanet | meb | ticketmaster | football
     lat: float | None = None
     lon: float | None = None
     nearest_airport: str | None = None  # IATA code (enrichment)

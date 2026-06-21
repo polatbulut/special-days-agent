@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 TICKETMASTER_API_KEY_ENV = "TICKETMASTER_API_KEY"
+FOOTBALL_API_KEY_ENV = "FOOTBALL_API_KEY"
 OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
 VLLM_BASE_URL_ENV = "VLLM_BASE_URL"
 VLLM_API_KEY_ENV = "VLLM_API_KEY"
@@ -54,6 +55,11 @@ def get_ticketmaster_key() -> str | None:
     """Return the Ticketmaster API key from the environment, or ``None``."""
     key = os.environ.get(TICKETMASTER_API_KEY_ENV, "").strip()
     return key or None
+
+
+def get_football_api_key() -> str | None:
+    """Return the API-Football (API-Sports) key from the environment, or ``None``."""
+    return _env(FOOTBALL_API_KEY_ENV)
 
 
 def _env(name: str) -> str | None:

@@ -60,5 +60,25 @@ class LoadDotenvTest(unittest.TestCase):
         config.load_dotenv("/no/such/.env")  # must not raise
 
 
+class FootballKeyTest(unittest.TestCase):
+    def setUp(self):
+        self._saved = os.environ.get(config.FOOTBALL_API_KEY_ENV)
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        if self._saved is None:
+            os.environ.pop(config.FOOTBALL_API_KEY_ENV, None)
+        else:
+            os.environ[config.FOOTBALL_API_KEY_ENV] = self._saved
+
+    def test_returns_stripped_key_when_set(self):
+        os.environ[config.FOOTBALL_API_KEY_ENV] = "  abc123  "
+        self.assertEqual(config.get_football_api_key(), "abc123")
+
+    def test_returns_none_when_unset(self):
+        os.environ.pop(config.FOOTBALL_API_KEY_ENV, None)
+        self.assertIsNone(config.get_football_api_key())
+
+
 if __name__ == "__main__":
     unittest.main()
