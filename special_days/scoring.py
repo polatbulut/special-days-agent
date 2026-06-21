@@ -78,6 +78,24 @@ _JSON_IMPACT_ONLY = 'Respond with ONLY JSON: {"impact": <integer 0-100>}'
 _JSON_ATTENDANCE_IMPACT = (
     'Respond with ONLY JSON: {"attendance": <integer>, "impact": <integer 0-100>}'
 )
+# Shared calibration so impact reflects THY ticket sales, not raw size/popularity.
+_IMPACT_RUBRIC = (
+    "IMPACT is an integer 0-100 meaning: how strongly this drives INCREMENTAL "
+    "Turkish Airlines (THY) TICKET SALES — roughly, how many people would book a "
+    "Turkish Airlines flight BECAUSE of it. Calibrate against this scale:\n"
+    "- 85-100: a nationwide Turkish religious/public holiday (Ramazan or Kurban "
+    "Bayramı) — millions of domestic and visiting-friends-and-relatives trips on THY.\n"
+    "- 55-80: strongly tied to THY's network — a major event in a Turkish hub that "
+    "pulls inbound air travel on THY, or a public holiday in a large Turkish-"
+    "diaspora market (Germany, Netherlands, France, Austria, UK) sending VFR "
+    "traffic to Türkiye on THY.\n"
+    "- 20-45: moderate THY relevance.\n"
+    "- 0-15: little or no THY relevance — most LOCAL events abroad whose crowd is "
+    "overwhelmingly local and would NOT fly Turkish Airlines. For example the Isle "
+    "of Wight Festival in the UK is ~5-10, NOT 75; a large local turnout alone does "
+    "NOT mean high THY impact.\n"
+    "Be realistic and conservative: when unsure, score lower."
+)
 
 
 def _dates(record: SpecialDate) -> str:
@@ -86,44 +104,47 @@ def _dates(record: SpecialDate) -> str:
 
 def _prompt_nager(record: SpecialDate) -> str:
     return (
-        f"{_THY} A public holiday in {record.country} is coming up. Estimate its "
-        f"IMPACT (0-100) on Turkish Airlines TICKET SALES — how much it lifts THY "
-        f"ticket demand (domestic, visiting-friends-and-relatives, and outbound "
-        f"travel). 100 = a nationwide multi-day holiday driving heavy THY travel; "
-        f"0 = negligible.\n"
-        f"Holiday: {record.event}\nCountry: {record.country}\n"
-        f"Type: {record.category}\nDates: {_dates(record)}\n"
+        f"{_THY}\n{_IMPACT_RUBRIC}\n\n"
+        f"PUBLIC HOLIDAY — Name: {record.event}; Country: {record.country}; "
+        f"Type: {record.category}; Dates: {_dates(record)}.\n"
+        f"If the country is Türkiye (TR) this drives domestic + VFR travel on THY; "
+        f"in a large Turkish-diaspora market it drives inbound VFR travel to Türkiye "
+        f"on THY; otherwise THY relevance is usually low.\n"
     ) + _JSON_IMPACT_ONLY
 
 
 def _prompt_diyanet(record: SpecialDate) -> str:
     return (
-        f"{_THY} A Turkish religious holiday (bayram) is coming up. Bayrams trigger "
-        f"the largest domestic and visiting-friends-and-relatives travel waves of "
-        f"the year. Estimate its IMPACT (0-100) on Turkish Airlines TICKET SALES.\n"
-        f"Holiday: {record.event}\nDates: {_dates(record)}\n"
+        f"{_THY}\n{_IMPACT_RUBRIC}\n\n"
+        f"TURKISH RELIGIOUS HOLIDAY (bayram) — Name: {record.event}; "
+        f"Dates: {_dates(record)}.\n"
+        f"Bayrams are the largest domestic and visiting-friends-and-relatives travel "
+        f"waves of the year on Turkish Airlines, so these score high.\n"
     ) + _JSON_IMPACT_ONLY
 
 
 def _prompt_meb(record: SpecialDate) -> str:
     return (
-        f"{_THY} A Turkish school break (MEB calendar) is coming up, which "
-        f"concentrates family leisure travel. Estimate its IMPACT (0-100) on "
-        f"Turkish Airlines TICKET SALES.\n"
-        f"Break: {record.event}\nDates: {_dates(record)}\n"
+        f"{_THY}\n{_IMPACT_RUBRIC}\n\n"
+        f"TURKISH SCHOOL BREAK (MEB calendar) — Name: {record.event}; "
+        f"Dates: {_dates(record)}.\n"
+        f"School breaks concentrate family leisure travel within and from Türkiye "
+        f"on THY.\n"
     ) + _JSON_IMPACT_ONLY
 
 
 def _prompt_ticketmaster(record: SpecialDate) -> str:
     payload = json.dumps(record.raw or {}, ensure_ascii=False)
     return (
-        f"{_THY} Below is the full API payload for a ticketed event. Predict:\n"
+        f"{_THY}\n{_IMPACT_RUBRIC}\n\n"
+        f"Below is the full API payload for a ticketed event. Estimate:\n"
         f"1. attendance: the total expected attendance, as an integer.\n"
-        f"2. impact: 0-100, how much this event lifts Turkish Airlines TICKET "
-        f"SALES via inbound air travel to the host city "
+        f"2. impact: per the rubric — how many attendees would realistically BUY A "
+        f"TURKISH AIRLINES TICKET to attend. Consider whether the host city "
         f"({record.city}, {record.country}; nearest airport "
-        f"{record.nearest_airport or 'n/a'}). 100 = a huge draw pulling heavy "
-        f"domestic/international air travel; 0 = negligible.\n"
+        f"{record.nearest_airport or 'n/a'}) is on THY's network and whether "
+        f"attendees are mostly LOCAL (low) versus flying in from Türkiye or abroad "
+        f"on THY (higher). A local event abroad scores low even with a large crowd.\n"
         f"Event API payload (JSON):\n{payload}\n"
     ) + _JSON_ATTENDANCE_IMPACT
 
