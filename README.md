@@ -1,8 +1,8 @@
 # Special-Date Intelligence Agents
 
 Discovers forward-looking **special dates** — public/religious holidays, school
-breaks and public events (concerts, sports, arts) — for flight-occupancy
-forecasting (*Uçuş Doluluk Tahmini*), and emits them as:
+breaks and public events (concerts, sports, arts, football fixtures) — for
+flight-occupancy forecasting (*Uçuş Doluluk Tahmini*), and emits them as:
 
 ```
 Event — Start date — End date — City — Nearest airport (IATA) — Impact (0-100)
@@ -19,8 +19,8 @@ one output:
 
 | Agent                | Countries                                  | Sources                                  |
 | -------------------- | ------------------------------------------ | ---------------------------------------- |
-| `TurkeyAgent`        | `TR`                                       | Nager.Date, **Diyanet**, **MEB**, Ticketmaster |
-| `InternationalAgent` | configurable (default DE, GB, NL, FR, US)  | Nager.Date, Ticketmaster                 |
+| `TurkeyAgent`        | `TR`                                       | Nager.Date, **Diyanet**, **MEB**, Ticketmaster, Football (Süper Lig) |
+| `InternationalAgent` | configurable (default DE, GB, NL, FR, US)  | Nager.Date, Ticketmaster, Football (top league per country + UEFA) |
 
 Collected dates are then **enriched**: nearest-airport mapping (IATA, within a
 catchment radius) and a transparent **0-100 impact score**.
@@ -33,9 +33,12 @@ catchment radius) and a transparent **0-100 impact score**.
 | Diyanet (bundled, official)                                   | Ramazan/Kurban Bayramı          | **None**        |
 | MEB (bundled, official)                                       | School breaks                   | **None**        |
 | [Ticketmaster Discovery](https://developer.ticketmaster.com/) | Events (concerts/sports/arts)   | Free, optional  |
+| [API-Football (API-Sports)](https://www.api-football.com/)    | Football fixtures (Süper Lig, UEFA, top leagues; incl. historical) | Free, optional  |
 
 Diyanet and MEB dates have no clean API, so they are bundled as curated
-**official** dates (`special_days/data/`) and refreshed yearly.
+**official** dates (`special_days/data/`) and refreshed yearly. Football fixtures
+carry away-fan / visiting-supporter travel demand that Ticketmaster does not
+list, and API-Football also exposes **historical** fixtures for backtesting.
 
 ## Quick start
 
@@ -60,16 +63,20 @@ Kurban Bayramı     2027-05-15  2027-05-19  Nationwide (TR)                   10
 
 (Or: `make run ARGS="--agent turkey --source holidays"`.)
 
-## Adding events (Ticketmaster)
+## Adding events (Ticketmaster + Football)
 
-Get a free key at <https://developer.ticketmaster.com/>, then:
+Get a free [Ticketmaster](https://developer.ticketmaster.com/) and/or
+[API-Football](https://www.api-football.com/) key, then:
 
 ```bash
-cp .env.example .env          # paste your key into .env
+cp .env.example .env          # paste TICKETMASTER_API_KEY / FOOTBALL_API_KEY into .env
 python -m special_days --agent turkey --source events
 ```
 
-Without a key the events step is skipped cleanly and you still get holidays.
+Each event source is independent and gated on its own key: set
+`TICKETMASTER_API_KEY` for concerts/sports/arts, `FOOTBALL_API_KEY` for league
+and cup football fixtures. Any source whose key is missing is skipped cleanly,
+so you still get holidays (and whichever event source you did configure).
 
 ## Excel output (`.xlsx`)
 
@@ -144,8 +151,8 @@ Or via the Makefile: `make docker-run ARGS="--agent both --format xlsx -o out/sp
 
 Every source maps into one `SpecialDate` (see [`special_days/models.py`](special_days/models.py)).
 Output columns: Event, Start date, End date, City, Source (nager/diyanet/meb/
-ticketmaster), Nearest airport, Impact, Predicted attendance, Bridge start,
-Bridge end — plus two per-day weight lists (csv/xlsx/json).
+ticketmaster/football), Nearest airport, Impact, Predicted attendance, Bridge
+start, Bridge end — plus two per-day weight lists (csv/xlsx/json).
 
 **Bridge ranges (köprü).** For Turkish holidays, `bridge_start`/`bridge_end`
 ([`special_days/bridge.py`](special_days/bridge.py)) extend the statutory dates
@@ -161,10 +168,27 @@ forced to the peak**. Example bridge curve: `99,99,74,62,50,62,74,99,99`.
 
 **Impact & predicted attendance** come from a pluggable scorer
 ([`special_days/scoring.py`](special_days/scoring.py)) with **per-source prompts**
-(`nager` / `diyanet` / `meb` / `ticketmaster` each distinct). **Impact** (0-100,
-the curve peak) is framed as the effect on **Turkish Airlines ticket sales**.
-For **events**, the prompt embeds the **full raw Ticketmaster payload** and the
-model also returns **predicted attendance**; holiday rows leave attendance blank.
+(`nager` / `diyanet` / `meb` / `ticketmaster` / `football` each distinct).
+**Impact** (0-100, the curve peak) is defined as the **relative volume of
+incremental Turkish Airlines ticket purchases** the date/event drives — literally
+*"how many people would buy a THY ticket because of it"*. The prompt forces the
+model to reason about **who travels and whether they'd fly THY** (Türkiye as
+origin/destination, THY's network and IST connecting hub, diaspora/VFR demand),
+then calibrate to an anchored rubric:
+
+| Band   | Anchor                                                                            |
+| ------ | -------------------------------------------------------------------------------- |
+| 90-100 | Turkish national religious holiday (Kurban / Ramazan Bayramı) — peak domestic+VFR |
+| 70-85  | Turkish national public holiday (esp. with a köprü bridge) or major TR school break |
+| 35-55  | marquee international event in a THY hub (UEFA CL final / global-superstar concert in Istanbul) |
+| 10-30  | a large event in a THY-served destination abroad drawing **some** international/diaspora travel |
+| 0-10   | a local/regional foreign event, overwhelmingly local audience, no Türkiye link (e.g. Isle of Wight Festival in Newport; a domestic lower-league match) |
+
+So a big local foreign event scores **single digits**, not high, because almost
+nobody flies THY for it. For **events** (both Ticketmaster and football) the
+prompt embeds the **full raw API payload** and the model also returns **predicted
+attendance** (THY impact is usually a small fraction of attendance for foreign
+local events); holiday rows leave attendance blank.
 - `heuristic` (default): offline category + duration + airport-proximity score,
   no key, **no attendance**.
 - `openai` (`--impact-scorer openai`): scores each record via the OpenAI chat API
@@ -227,6 +251,7 @@ special_days/
     diyanet.py     religious holidays (bundled official)
     meb.py         school breaks      (bundled official)
     ticketmaster.py events           (Ticketmaster Discovery)
+    football.py    football fixtures (API-Football / API-Sports)
   agents.py        TurkeyAgent, InternationalAgent
   bridge.py        köprü bridge ranges (TR holidays)
   curve.py         per-day Linear-V weight curves
@@ -260,6 +285,14 @@ The suite mocks the network, so it runs offline and fast.
   published).
 - **Event noise.** Some Ticketmaster "season ticket" listings have a single date
   and so slip past the span filter; impact scoring is heuristic, not learned.
+- **Football coverage & free tier.** Football pulls Süper Lig (Turkey) plus the
+  top league per international market and UEFA club competitions — kept modest to
+  respect the free-tier request cap (a few paged requests per league per season).
+  Seasons are derived from the window using the European August-start convention,
+  so calendar-year leagues (e.g. MLS) and unmapped countries are skipped. Fixture
+  timestamps are UTC and recorded as the UTC calendar day (a very late kickoff can
+  land on the adjacent local day); fixtures carry no venue coordinates, so
+  football rows have no nearest airport.
 - **Airport list** covers major TR airports + destination hubs; extend
   `data/airports.json` for finer coverage.
 - **Events** are limited to Ticketmaster-ticketed inventory.
