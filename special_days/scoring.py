@@ -80,20 +80,27 @@ _JSON_ATTENDANCE_IMPACT = (
 )
 # Shared calibration so impact reflects THY ticket sales, not raw size/popularity.
 _IMPACT_RUBRIC = (
-    "IMPACT is an integer 0-100 meaning: how strongly this drives INCREMENTAL "
-    "Turkish Airlines (THY) TICKET SALES — roughly, how many people would book a "
-    "Turkish Airlines flight BECAUSE of it. Calibrate against this scale:\n"
-    "- 85-100: a nationwide Turkish religious/public holiday (Ramazan or Kurban "
-    "Bayramı) — millions of domestic and visiting-friends-and-relatives trips on THY.\n"
-    "- 55-80: strongly tied to THY's network — a major event in a Turkish hub that "
-    "pulls inbound air travel on THY, or a public holiday in a large Turkish-"
-    "diaspora market (Germany, Netherlands, France, Austria, UK) sending VFR "
-    "traffic to Türkiye on THY.\n"
-    "- 20-45: moderate THY relevance.\n"
-    "- 0-15: little or no THY relevance — most LOCAL events abroad whose crowd is "
-    "overwhelmingly local and would NOT fly Turkish Airlines. For example the Isle "
-    "of Wight Festival in the UK is ~5-10, NOT 75; a large local turnout alone does "
-    "NOT mean high THY impact.\n"
+    "IMPACT is an integer 0-100: the RELATIVE volume of INCREMENTAL Turkish "
+    "Airlines (THY) ticket purchases this date/event drives — literally, how many "
+    "people would buy a Turkish Airlines ticket BECAUSE of it.\n"
+    "First reason explicitly: WHO travels for this, and would they fly THY? Weigh "
+    "Türkiye as an origin or destination, THY's route network and its Istanbul "
+    "(IST) connecting hub, and Turkish diaspora / visiting-friends-and-relatives "
+    "(VFR) demand. An event with no plausible Türkiye link is near zero no matter "
+    "how big it is locally — a large local crowd is NOT high THY impact.\n"
+    "Calibrate to these anchors (anchors to reason from, NOT keywords to match):\n"
+    "- 90-100: a Turkish national religious holiday (Kurban or Ramazan Bayramı) — "
+    "peak domestic + VFR demand, millions of trips on THY.\n"
+    "- 70-85: a Turkish national public holiday (especially one with a köprü "
+    "bridge) or a major Turkish school break.\n"
+    "- 35-55: a marquee INTERNATIONAL event held in a THY hub that pulls "
+    "international fans — e.g. a UEFA Champions League final or a global-superstar "
+    "stadium concert in Istanbul.\n"
+    "- 10-30: a large event in a THY-served destination abroad that draws SOME "
+    "international or diaspora travel.\n"
+    "- 0-10: a local/regional foreign event with an overwhelmingly local audience "
+    "and no Türkiye link — e.g. the Isle of Wight Festival in Newport, a domestic "
+    "lower-league match, or a county fair.\n"
     "Be realistic and conservative: when unsure, score lower."
 )
 
@@ -149,12 +156,34 @@ def _prompt_ticketmaster(record: SpecialDate) -> str:
     ) + _JSON_ATTENDANCE_IMPACT
 
 
+def _prompt_football(record: SpecialDate) -> str:
+    payload = json.dumps(record.raw or {}, ensure_ascii=False)
+    return (
+        f"{_THY}\n{_IMPACT_RUBRIC}\n\n"
+        f"Below is the full API payload for a football fixture "
+        f"({record.event}; {record.city}, {record.country}). Estimate:\n"
+        f"1. attendance: the total expected match attendance, as an integer.\n"
+        f"2. impact: per the rubric — of the people who travel for this match, how "
+        f"many would realistically BUY A TURKISH AIRLINES TICKET. Think about away "
+        f"fans and visiting supporters: a Süper Lig or UEFA tie pulling travelling "
+        f"fans to or through Türkiye on THY (IST hub) scores higher, while a foreign "
+        f"domestic-league match with an overwhelmingly local crowd scores very low "
+        f"even with a large attendance.\n"
+        f"Fixture API payload (JSON):\n{payload}\n"
+    ) + _JSON_ATTENDANCE_IMPACT
+
+
 _PROMPT_BUILDERS = {
     "nager": _prompt_nager,
     "diyanet": _prompt_diyanet,
     "meb": _prompt_meb,
     "ticketmaster": _prompt_ticketmaster,
+    "football": _prompt_football,
 }
+
+# Sources whose records are *events* and so carry a predicted attendance.
+# Holiday sources (nager/diyanet/meb) never do — attendance is forced to None.
+_EVENT_SOURCES = {"ticketmaster", "football"}
 
 
 def _clamp_impact(value) -> int | None:
@@ -180,8 +209,8 @@ class LLMScorer:
 
     def score(self, record: SpecialDate) -> ScoreResult:
         impact, attendance = self._parse(self._model_fn(self._build_prompt(record)))
-        if record.source != "ticketmaster":
-            attendance = None  # attendance is an event concept only
+        if record.source not in _EVENT_SOURCES:
+            attendance = None  # attendance is an event concept only (holidays have none)
         return ScoreResult(impact, attendance)
 
     def _build_prompt(self, record: SpecialDate) -> str:

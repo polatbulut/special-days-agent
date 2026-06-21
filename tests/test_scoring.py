@@ -17,6 +17,12 @@ def event(category="concert", distance=None, lat=41.0, lon=29.0, raw=None):
                        airport_distance_km=distance, raw=raw or {"name": "E", "id": "abc"})
 
 
+def football(raw=None):
+    return SpecialDate("Galatasaray vs Fenerbahçe", date(2026, 8, 15), date(2026, 8, 15),
+                       "İstanbul", "sports", "TR", "football",
+                       raw=raw or {"teams": {"home": {"name": "GS"}, "away": {"name": "FB"}}})
+
+
 class HeuristicScorerTest(unittest.TestCase):
     def setUp(self):
         self.scorer = scoring.HeuristicScorer()
@@ -45,12 +51,21 @@ class PromptRoutingTest(unittest.TestCase):
     def test_per_source_prompts_all_differ(self):
         prompts = [self.scorer._build_prompt(holiday(source=s)) for s in ("nager", "diyanet", "meb")]
         prompts.append(self.scorer._build_prompt(event()))
-        self.assertEqual(len(set(prompts)), 4)
+        prompts.append(self.scorer._build_prompt(football()))
+        self.assertEqual(len(set(prompts)), 5)
 
     def test_ticketmaster_prompt_embeds_payload_and_asks_attendance(self):
         p = self.scorer._build_prompt(event(raw={"name": "Tarkan", "id": "XYZ123"}))
         self.assertIn("XYZ123", p)  # full payload embedded
         self.assertIn("attendance", p.lower())
+
+    def test_football_prompt_embeds_payload_and_asks_attendance(self):
+        p = self.scorer._build_prompt(football(raw={"id": "FX99", "teams": {}}))
+        self.assertIn("FX99", p)  # full payload embedded
+        self.assertIn("attendance", p.lower())
+        # football-specific framing, so a misroute to the ticketmaster builder fails
+        self.assertIn("football fixture", p)
+        self.assertNotIn("ticketed event", p)
 
     def test_holiday_prompt_is_impact_only_and_mentions_thy(self):
         p = self.scorer._build_prompt(holiday(source="nager", country="DE"))
@@ -62,6 +77,11 @@ class LLMScoreTest(unittest.TestCase):
     def test_event_returns_attendance_and_impact(self):
         r = scoring.LLMScorer(lambda p: '{"attendance": 8000, "impact": 70}').score(event())
         self.assertEqual((r.impact, r.attendance), (70, 8000))
+
+    def test_football_event_keeps_attendance(self):
+        # football is an event source -> attendance survives like ticketmaster
+        r = scoring.LLMScorer(lambda p: '{"attendance": 41000, "impact": 25}').score(football())
+        self.assertEqual((r.impact, r.attendance), (25, 41000))
 
     def test_holiday_attendance_forced_none(self):
         # even if the model returns an attendance, holidays must stay null
