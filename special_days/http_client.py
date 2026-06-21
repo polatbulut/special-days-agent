@@ -24,10 +24,16 @@ class HttpError(Exception):
     """Raised when a request fails or returns a non-2xx status."""
 
 
-def get_json(url: str, params: dict | None = None, timeout: float = 30.0):
+def get_json(
+    url: str,
+    params: dict | None = None,
+    timeout: float = 30.0,
+    headers: dict | None = None,
+):
     """GET ``url`` (with optional query ``params``) and parse the JSON body.
 
-    ``None``-valued params are dropped. Raises :class:`HttpError` on any
+    ``None``-valued params are dropped. Extra ``headers`` (e.g. an API-key
+    header) are merged over the defaults. Raises :class:`HttpError` on any
     network or HTTP-status failure so callers can decide whether to skip a
     source or abort.
     """
@@ -35,10 +41,10 @@ def get_json(url: str, params: dict | None = None, timeout: float = 30.0):
         query = {k: v for k, v in params.items() if v is not None}
         url = f"{url}?{urllib.parse.urlencode(query)}"
 
-    request = urllib.request.Request(
-        url,
-        headers={"User-Agent": USER_AGENT, "Accept": "application/json"},
-    )
+    request_headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+    if headers:
+        request_headers.update(headers)
+    request = urllib.request.Request(url, headers=request_headers)
     try:
         with urllib.request.urlopen(request, timeout=timeout, context=_SSL_CONTEXT) as response:
             payload = response.read()
