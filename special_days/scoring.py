@@ -24,6 +24,7 @@ _CATEGORY_WEIGHT = {
     "school_holiday": 55,
     "sports": 60,
     "concert": 55,
+    "expo": 50,
     "arts": 45,
     "film": 40,
     "event": 50,
@@ -173,17 +174,37 @@ def _prompt_football(record: SpecialDate) -> str:
     ) + _JSON_ATTENDANCE_IMPACT
 
 
+def _prompt_eventseye(record: SpecialDate) -> str:
+    payload = json.dumps(record.raw or {}, ensure_ascii=False)
+    return (
+        f"{_THY}\n{_IMPACT_RUBRIC}\n\n"
+        f"Below is a B2B TRADE FAIR / EXHIBITION listing ({record.event}; "
+        f"{record.city}, {record.country}). Trade fairs pull exhibitors and "
+        f"business visitors who often fly in and book ahead, with a premium / "
+        f"business-cabin skew. The listing carries NO attendance figure, so:\n"
+        f"1. attendance: estimate total expected attendance from the sector, venue "
+        f"and city, as an integer.\n"
+        f"2. impact: per the rubric — of those, how many would realistically BUY A "
+        f"TURKISH AIRLINES TICKET. A fair IN Türkiye drawing international "
+        f"exhibitors/visitors through IST scores higher; a fair abroad scores by "
+        f"its Türkiye-origin / diaspora and THY-network pull, and low if the crowd "
+        f"is overwhelmingly local.\n"
+        f"Trade-fair listing (JSON):\n{payload}\n"
+    ) + _JSON_ATTENDANCE_IMPACT
+
+
 _PROMPT_BUILDERS = {
     "nager": _prompt_nager,
     "diyanet": _prompt_diyanet,
     "meb": _prompt_meb,
     "ticketmaster": _prompt_ticketmaster,
     "football": _prompt_football,
+    "eventseye": _prompt_eventseye,
 }
 
 # Sources whose records are *events* and so carry a predicted attendance.
 # Holiday sources (nager/diyanet/meb) never do — attendance is forced to None.
-_EVENT_SOURCES = {"ticketmaster", "football"}
+_EVENT_SOURCES = {"ticketmaster", "football", "eventseye"}
 
 
 def _clamp_impact(value) -> int | None:

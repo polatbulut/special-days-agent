@@ -1,8 +1,9 @@
 # Special-Date Intelligence Agents
 
 Discovers forward-looking **special dates** — public/religious holidays, school
-breaks and public events (concerts, sports, arts, football fixtures) — for
-flight-occupancy forecasting (*Uçuş Doluluk Tahmini*), and emits them as:
+breaks, public events (concerts, sports, arts, football fixtures) and
+corporate/B2B events (trade fairs, exhibitions, expos) — for flight-occupancy
+forecasting (*Uçuş Doluluk Tahmini*), and emits them as:
 
 ```
 Event — Start date — End date — City — Nearest airport (IATA) — Impact (0-100)
@@ -19,13 +20,13 @@ one output:
 
 | Agent                | Countries                                  | Sources                                  |
 | -------------------- | ------------------------------------------ | ---------------------------------------- |
-| `TurkeyAgent`        | `TR`                                       | Nager.Date, **Diyanet**, **MEB**, Ticketmaster, Football (Süper Lig) |
-| `InternationalAgent` | configurable (default DE, GB, NL, FR, US)  | Nager.Date, Ticketmaster, Football (top league per country + UEFA) |
+| `TurkeyAgent`        | `TR`                                       | Nager.Date, **Diyanet**, **MEB**, Ticketmaster, Football (Süper Lig), EventsEye |
+| `InternationalAgent` | configurable (default DE, GB, NL, FR, US)  | Nager.Date, Ticketmaster, Football (top league per country + UEFA), EventsEye |
 
 Collected dates are then **enriched**: nearest-airport mapping (IATA, within a
 catchment radius) and a transparent **0-100 impact score**.
 
-## Sources (free only)
+## Sources
 
 | Source                                                        | Data                            | API key         |
 | ------------------------------------------------------------- | ------------------------------- | --------------- |
@@ -34,11 +35,28 @@ catchment radius) and a transparent **0-100 impact score**.
 | MEB (bundled, official)                                       | School breaks                   | **None**        |
 | [Ticketmaster Discovery](https://developer.ticketmaster.com/) | Events (concerts/sports/arts)   | Free, optional  |
 | [API-Football (API-Sports)](https://www.api-football.com/)    | Football fixtures (Süper Lig, UEFA, top leagues; incl. historical) | Free, optional  |
+| [EventsEye](https://www.eventseye.com/) (scrape)              | Corporate/B2B trade fairs & expos (free directory, facts only) | None, opt-in |
 
 Diyanet and MEB dates have no clean API, so they are bundled as curated
 **official** dates (`special_days/data/`) and refreshed yearly. Football fixtures
 carry away-fan / visiting-supporter travel demand that Ticketmaster does not
 list, and API-Football also exposes **historical** fixtures for backtesting.
+
+**Corporate / B2B events.** Trade fairs, exhibitions and expos drive incremental
+business-cabin and inbound demand on fixed forward dates. They are collected by
+**EventsEye** (`EVENTSEYE_ENABLED`) — a polite, opt-in scraper of the public
+EventsEye trade-fair directory (no API key, no anti-bot wall). It extracts
+**facts only** — name, dates, city, venue, sector and recurrence — and
+deliberately **never collects organizer names, emails or phones** (KVKK/GDPR).
+Listings carry no attendance figure and no coordinates, so the LLM scorer
+estimates attendance from the event facts and the nearest-airport column stays
+blank (as with football).
+
+Other corporate-event sources were evaluated and rejected: **10times** is behind
+a Cloudflare challenge and its ToS forbids commercial automated access;
+**Eventbrite** removed its public event-search API in 2019 (it can only list your
+own org's events); **Meetup** has no free API (paid Meetup Pro only). EventsEye
+is the one free, scrapeable trade-fair directory.
 
 ## Quick start
 
@@ -63,7 +81,7 @@ Kurban Bayramı     2027-05-15  2027-05-19  Nationwide (TR)                   10
 
 (Or: `make run ARGS="--agent turkey --source holidays"`.)
 
-## Adding events (Ticketmaster + Football)
+## Adding events (Ticketmaster + Football + Corporate/B2B)
 
 Get a free [Ticketmaster](https://developer.ticketmaster.com/) and/or
 [API-Football](https://www.api-football.com/) key, then:
@@ -71,12 +89,17 @@ Get a free [Ticketmaster](https://developer.ticketmaster.com/) and/or
 ```bash
 cp .env.example .env          # paste TICKETMASTER_API_KEY / FOOTBALL_API_KEY into .env
 python -m special_days --agent turkey --source events
+
+# Corporate/B2B: free EventsEye trade-fair scrape (opt-in, no key)
+EVENTSEYE_ENABLED=1 python -m special_days --agent turkey --source events
 ```
 
-Each event source is independent and gated on its own key: set
+Each event source is independent and gated on its own credential: set
 `TICKETMASTER_API_KEY` for concerts/sports/arts, `FOOTBALL_API_KEY` for league
-and cup football fixtures. Any source whose key is missing is skipped cleanly,
-so you still get holidays (and whichever event source you did configure).
+and cup football fixtures, and `EVENTSEYE_ENABLED=1` to turn on the free EventsEye
+corporate/B2B trade-fair scrape. Any source whose credential is missing (or the
+EventsEye flag left off) is skipped cleanly, so you still get holidays (and
+whichever event source you did configure).
 
 ## Excel output (`.xlsx`)
 
@@ -151,8 +174,8 @@ Or via the Makefile: `make docker-run ARGS="--agent both --format xlsx -o out/sp
 
 Every source maps into one `SpecialDate` (see [`special_days/models.py`](special_days/models.py)).
 Output columns: Event, Start date, End date, City, Source (nager/diyanet/meb/
-ticketmaster/football), Nearest airport, Impact, Predicted attendance, Bridge
-start, Bridge end — plus two per-day weight lists (csv/xlsx/json).
+ticketmaster/football/eventseye), Nearest airport, Impact, Predicted attendance,
+Bridge start, Bridge end — plus two per-day weight lists (csv/xlsx/json).
 
 **Bridge ranges (köprü).** For Turkish holidays, `bridge_start`/`bridge_end`
 ([`special_days/bridge.py`](special_days/bridge.py)) extend the statutory dates
@@ -168,7 +191,8 @@ forced to the peak**. Example bridge curve: `99,99,74,62,50,62,74,99,99`.
 
 **Impact & predicted attendance** come from a pluggable scorer
 ([`special_days/scoring.py`](special_days/scoring.py)) with **per-source prompts**
-(`nager` / `diyanet` / `meb` / `ticketmaster` / `football` each distinct).
+(`nager` / `diyanet` / `meb` / `ticketmaster` / `football` / `eventseye` each
+distinct).
 **Impact** (0-100, the curve peak) is defined as the **relative volume of
 incremental Turkish Airlines ticket purchases** the date/event drives — literally
 *"how many people would buy a THY ticket because of it"*. The prompt forces the
@@ -185,10 +209,12 @@ then calibrate to an anchored rubric:
 | 0-10   | a local/regional foreign event, overwhelmingly local audience, no Türkiye link (e.g. Isle of Wight Festival in Newport; a domestic lower-league match) |
 
 So a big local foreign event scores **single digits**, not high, because almost
-nobody flies THY for it. For **events** (both Ticketmaster and football) the
-prompt embeds the **full raw API payload** and the model also returns **predicted
+nobody flies THY for it. For **events** (Ticketmaster, football and EventsEye) the
+prompt embeds the **full raw payload** and the model also returns **predicted
 attendance** (THY impact is usually a small fraction of attendance for foreign
-local events); holiday rows leave attendance blank.
+local events); holiday rows leave attendance blank. For corporate/B2B trade fairs
+the prompt notes their business-cabin / advance-booking skew and has the model
+estimate attendance from the event facts (EventsEye carries no headcount).
 - `heuristic` (default): offline category + duration + airport-proximity score,
   no key, **no attendance**.
 - `openai` (`--impact-scorer openai`): scores each record via the OpenAI chat API

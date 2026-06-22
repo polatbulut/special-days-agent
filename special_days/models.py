@@ -27,9 +27,9 @@ class SpecialDate:
     start_date: date
     end_date: date
     city: str
-    category: str  # public_holiday | religious_holiday | school_holiday | concert | sports | arts | film | event
+    category: str  # public_holiday | religious_holiday | school_holiday | concert | sports | arts | film | expo | event
     country: str  # ISO-3166 alpha-2, e.g. "TR"
-    source: str  # nager | diyanet | meb | ticketmaster | football
+    source: str  # nager | diyanet | meb | ticketmaster | football | eventseye
     lat: float | None = None
     lon: float | None = None
     nearest_airport: str | None = None  # IATA code (enrichment)
