@@ -59,19 +59,28 @@ def impact_score(record: SpecialDate, airport_distance_km: float | None) -> int:
     ).impact
 
 
+# Event sources whose listings can span many days (Ticketmaster season tickets,
+# long EventsEye expo passes). Football fixtures are single-day and holidays/
+# school breaks are always kept, so they are not filtered.
+_LONG_EVENT_SOURCES = {"ticketmaster", "eventseye"}
+
+
 def drop_long_events(
     records: list[SpecialDate],
     max_event_span_days: int = DEFAULT_MAX_EVENT_SPAN_DAYS,
 ) -> list[SpecialDate]:
-    """Drop over-long *events* — Ticketmaster season tickets and multi-month
-    passes are listing artifacts, not demand spikes. Holidays/school breaks are
-    always kept. ``max_event_span_days <= 0`` disables the filter.
+    """Drop over-long *events* — season tickets and multi-month passes are
+    listing artifacts, not demand spikes. Holidays/school breaks are always kept.
+    ``max_event_span_days <= 0`` disables the filter.
     """
     if max_event_span_days <= 0:
         return list(records)
     kept: list[SpecialDate] = []
     for record in records:
-        if record.source == "ticketmaster" and _span_days(record.start_date, record.end_date) > max_event_span_days:
+        if (
+            record.source in _LONG_EVENT_SOURCES
+            and _span_days(record.start_date, record.end_date) > max_event_span_days
+        ):
             continue
         kept.append(record)
     return kept

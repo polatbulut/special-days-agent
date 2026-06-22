@@ -8,6 +8,7 @@ from pathlib import Path
 
 TICKETMASTER_API_KEY_ENV = "TICKETMASTER_API_KEY"
 FOOTBALL_API_KEY_ENV = "FOOTBALL_API_KEY"
+EVENTSEYE_ENABLED_ENV = "EVENTSEYE_ENABLED"
 OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
 VLLM_BASE_URL_ENV = "VLLM_BASE_URL"
 VLLM_API_KEY_ENV = "VLLM_API_KEY"
@@ -60,6 +61,19 @@ def get_ticketmaster_key() -> str | None:
 def get_football_api_key() -> str | None:
     """Return the API-Football (API-Sports) key from the environment, or ``None``."""
     return _env(FOOTBALL_API_KEY_ENV)
+
+
+_TRUTHY = {"1", "true", "yes", "on"}
+
+
+def eventseye_enabled() -> bool:
+    """True if EventsEye scraping is explicitly enabled (``EVENTSEYE_ENABLED`` truthy).
+
+    Scraping is opt-in (off by default) so default runs stay fast and API-only,
+    and the directory is only hit when an operator asks for it.
+    """
+    value = (os.environ.get(EVENTSEYE_ENABLED_ENV, "") or "").strip().lower()
+    return value in _TRUTHY
 
 
 def _env(name: str) -> str | None:

@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Event-Driven Demand Forecasting — Multi-Agent Architecture</title>
+<style>
+  :root{ --ink:#0f172a; --sub:#64748b; --border:#e2e8f0; }
+  *{ box-sizing:border-box; }
+  body{ margin:0; background:#f4f6f9; color:var(--ink);
+    font-family:Inter,'Segoe UI',system-ui,-apple-system,Arial,sans-serif; }
+  .wrap{ max-width:1240px; margin:0 auto; padding:32px 24px 48px; }
+  header h1{ font-size:24px; margin:0 0 6px; letter-spacing:-0.2px; }
+  header p{ font-size:14px; color:var(--sub); margin:0 0 14px; max-width:760px; line-height:1.5; }
+  .pipeline{ display:flex; flex-wrap:wrap; gap:8px; align-items:center; font-size:12.5px;
+    color:var(--sub); margin:0 0 22px; }
+  .pipeline b{ color:var(--ink); font-weight:600; }
+  .pipeline .arr{ color:#cbd5e1; }
+  .panel{ background:#fff; border:1px solid var(--border); border-radius:18px;
+    padding:18px 18px 10px; box-shadow:0 1px 2px rgba(15,23,42,.04),0 12px 30px rgba(15,23,42,.05); }
+  svg{ width:100%; height:auto; display:block; }
+  .legend{ display:flex; flex-wrap:wrap; gap:16px 22px; margin-top:14px;
+    padding-top:14px; border-top:1px solid var(--border); }
+  .lg{ display:flex; align-items:center; gap:7px; font-size:12px; color:var(--sub); }
+  .sw{ width:12px; height:12px; border-radius:4px; display:inline-block; }
+  .dot{ width:11px; height:11px; border-radius:50%; display:inline-block; }
+  .ln{ width:20px; height:0; border-top:3px solid #0d9488; display:inline-block; }
+  .ln.dash{ border-top:2px dashed #cbd5e1; }
+  footer{ margin-top:18px; font-size:11.5px; color:var(--sub); line-height:1.6; }
+  footer b{ color:var(--ink); font-weight:600; }
+  @media print{ body{ background:#fff; } .panel{ box-shadow:none; } }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <h1>Event-Driven Demand Forecasting</h1>
+      <p>A multi-agent architecture that turns live event data into airline demand
+      forecasts. Regional agents ingest ticketing, fixture, trade-fair and holiday
+      feeds, prediction agents estimate impact and attendance, and the results feed
+      the Expected Load Factor and Expected Revenue projects.</p>
+      <div class="pipeline">
+        <b>Live event feeds</b><span class="arr">→</span>
+        <b>Regional agents</b><span class="arr">→</span>
+        <b>Prediction agents</b><span class="arr">→</span>
+        <b>Load-factor &amp; revenue forecasts</b>
+      </div>
+    </header>
+    <div class="panel">
+      <svg viewBox="0 0 1320 788" xmlns="http://www.w3.org/2000/svg"
+     font-family="Inter, 'Segoe UI', system-ui, -apple-system, Arial, sans-serif">
+  <defs>
+    <marker id="aLight" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5"
+        markerHeight="7.5" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#cbd5e1"/></marker>
+    <marker id="aGray" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5"
+        markerHeight="7.5" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#94a3b8"/></marker>
+    <marker id="aTeal" viewBox="0 0 10 10" refX="8.5" refY="5" markerWidth="7.5"
+        markerHeight="7.5" orient="auto-start-reverse">
+        <path d="M0 0 L10 5 L0 10 z" fill="#0d9488"/></marker>
+  </defs>
+  
+    <rect x="24" y="82" width="214" height="662" rx="18" fill="#f1f5f9"/>
+    <text x="131" y="62" text-anchor="middle" font-size="11" font-weight="700"
+          letter-spacing="1.4" fill="#64748b">DATA SOURCES</text>
+    <rect x="284" y="82" width="284" height="662" rx="18" fill="#f8fafc"/>
+    <text x="426" y="62" text-anchor="middle" font-size="11" font-weight="700"
+          letter-spacing="1.4" fill="#64748b">REGIONAL AGENTS</text>
+    <rect x="600" y="82" width="306" height="662" rx="18" fill="#faf7ff"/>
+    <text x="753" y="62" text-anchor="middle" font-size="11" font-weight="700"
+          letter-spacing="1.4" fill="#64748b">PREDICTION AGENTS</text>
+    <rect x="952" y="82" width="344" height="662" rx="18" fill="#f1fbf5"/>
+    <text x="1124" y="62" text-anchor="middle" font-size="11" font-weight="700"
+          letter-spacing="1.4" fill="#64748b">FORECAST OUTPUTS</text>
+  <g>
+    <path d="M 226 128.66666666666666 C 259.3 128.66666666666666, 266.7 222.15384615384616, 300 222.15384615384616" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 143.33333333333334 C 259.3 143.33333333333334, 266.7 468.44444444444446, 300 468.44444444444446" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 185 C 259.3 185, 266.7 236.30769230769232, 300 236.30769230769232" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 234 C 259.3 234, 266.7 250.46153846153845, 300 250.46153846153845" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 275.6666666666667 C 259.3 275.6666666666667, 266.7 264.61538461538464, 300 264.61538461538464" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 290.3333333333333 C 259.3 290.3333333333333, 266.7 488.8888888888889, 300 488.8888888888889" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 324.6666666666667 C 259.3 324.6666666666667, 266.7 278.7692307692308, 300 278.7692307692308" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 339.3333333333333 C 259.3 339.3333333333333, 266.7 509.3333333333333, 300 509.3333333333333" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 373.6666666666667 C 259.3 373.6666666666667, 266.7 292.9230769230769, 300 292.9230769230769" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 388.3333333333333 C 259.3 388.3333333333333, 266.7 529.7777777777778, 300 529.7777777777778" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 422.6666666666667 C 259.3 422.6666666666667, 266.7 307.0769230769231, 300 307.0769230769231" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 437.3333333333333 C 259.3 437.3333333333333, 266.7 550.2222222222222, 300 550.2222222222222" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 471.6666666666667 C 259.3 471.6666666666667, 266.7 321.2307692307692, 300 321.2307692307692" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 486.3333333333333 C 259.3 486.3333333333333, 266.7 570.6666666666666, 300 570.6666666666666" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 520.6666666666666 C 259.3 520.6666666666666, 266.7 335.38461538461536, 300 335.38461538461536" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 535.3333333333334 C 259.3 535.3333333333334, 266.7 591.1111111111111, 300 591.1111111111111" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 596.6666666666666 C 259.3 596.6666666666666, 266.7 349.53846153846155, 300 349.53846153846155" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 611.3333333333334 C 259.3 611.3333333333334, 266.7 611.5555555555555, 300 611.5555555555555" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 653 C 259.3 653, 266.7 363.6923076923077, 300 363.6923076923077" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 226 702 C 259.3 702, 266.7 377.8461538461538, 300 377.8461538461538" stroke="#d9dfe7" stroke-width="1.25" fill="none" />
+    <path d="M 550 269.3333333333333 C 583.3 269.3333333333333, 590.7 272.6666666666667, 624 272.6666666666667" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#aGray)" />
+    <path d="M 550 330.6666666666667 C 583.3 330.6666666666667, 590.7 512.6666666666666, 624 512.6666666666666" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#aGray)" />
+    <path d="M 550 509.3333333333333 C 583.3 509.3333333333333, 590.7 327.3333333333333, 624 327.3333333333333" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#aGray)" />
+    <path d="M 550 570.6666666666666 C 583.3 570.6666666666666, 590.7 567.3333333333334, 624 567.3333333333334" stroke="#94a3b8" stroke-width="2" fill="none" marker-end="url(#aGray)" />
+    <path d="M 904 512.6666666666666 C 938.2 512.6666666666666, 945.8 327.3333333333333, 980 327.3333333333333" stroke="#0d9488" stroke-width="2.6" fill="none" marker-end="url(#aTeal)" />
+    <path d="M 904 272.6666666666667 C 938.2 272.6666666666667, 945.8 272.6666666666667, 980 272.6666666666667" stroke="#cbd5e1" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#aLight)" />
+    <path d="M 904 327.3333333333333 C 938.2 327.3333333333333, 945.8 512.6666666666666, 980 512.6666666666666" stroke="#0d9488" stroke-width="2.6" fill="none" marker-end="url(#aTeal)" />
+    <path d="M 904 567.3333333333334 C 938.2 567.3333333333334, 945.8 567.3333333333334, 980 567.3333333333334" stroke="#cbd5e1" stroke-width="1.6" stroke-dasharray="5 4" fill="none" marker-end="url(#aLight)" />
+  </g>
+  <g>
+    <text x="40" y="103" font-size="9.5" font-weight="700" letter-spacing="1.1"
+        fill="#94a3b8">EVENTS &amp; TICKETING</text>
+    <text x="40" y="571" font-size="9.5" font-weight="700" letter-spacing="1.1"
+        fill="#94a3b8">HOLIDAYS &amp; CALENDAR</text>
+    <g>
+    <rect x="40" y="114" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="136" r="5" fill="#64748b"/>
+    <text x="74" y="134" font-size="13" font-weight="700" fill="#0f172a">Ticketmaster</text>
+    <text x="74" y="149" font-size="10.5" fill="#64748b">Concerts · sports · arts</text>
+  </g>
+    <g>
+    <rect x="40" y="163" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="185" r="5" fill="#E30A17"/>
+    <text x="74" y="183" font-size="13" font-weight="700" fill="#0f172a">Biletix</text>
+    <text x="74" y="198" font-size="10.5" fill="#64748b">TR concerts &amp; events</text>
+  </g>
+    <g>
+    <rect x="40" y="212" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="234" r="5" fill="#E30A17"/>
+    <text x="74" y="232" font-size="13" font-weight="700" fill="#0f172a">Passo</text>
+    <text x="74" y="247" font-size="10.5" fill="#64748b">TR sports &amp; concerts</text>
+  </g>
+    <g>
+    <rect x="40" y="261" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="283" r="5" fill="#64748b"/>
+    <text x="74" y="281" font-size="13" font-weight="700" fill="#0f172a">Songkick</text>
+    <text x="74" y="296" font-size="10.5" fill="#64748b">Concert listings</text>
+  </g>
+    <g>
+    <rect x="40" y="310" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="332" r="5" fill="#64748b"/>
+    <text x="74" y="330" font-size="13" font-weight="700" fill="#0f172a">Eventbrite</text>
+    <text x="74" y="345" font-size="10.5" fill="#64748b">Community &amp; B2B events</text>
+  </g>
+    <g>
+    <rect x="40" y="359" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="381" r="5" fill="#64748b"/>
+    <text x="74" y="379" font-size="13" font-weight="700" fill="#0f172a">API-Football</text>
+    <text x="74" y="394" font-size="10.5" fill="#64748b">Süper Lig · UEFA fixtures</text>
+  </g>
+    <g>
+    <rect x="40" y="408" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="430" r="5" fill="#64748b"/>
+    <text x="74" y="428" font-size="13" font-weight="700" fill="#0f172a">Sports Fixtures</text>
+    <text x="74" y="443" font-size="10.5" fill="#64748b">League &amp; cup matches</text>
+  </g>
+    <g>
+    <rect x="40" y="457" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="479" r="5" fill="#64748b"/>
+    <text x="74" y="477" font-size="13" font-weight="700" fill="#0f172a">EventsEye</text>
+    <text x="74" y="492" font-size="10.5" fill="#64748b">Trade fairs &amp; B2B expos</text>
+  </g>
+    <g>
+    <rect x="40" y="506" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="528" r="5" fill="#64748b"/>
+    <text x="74" y="526" font-size="13" font-weight="700" fill="#0f172a">Festivals &amp; Expos</text>
+    <text x="74" y="541" font-size="10.5" fill="#64748b">Festivals &amp; exhibitions</text>
+  </g>
+    <g>
+    <rect x="40" y="582" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="604" r="5" fill="#64748b"/>
+    <text x="74" y="602" font-size="13" font-weight="700" fill="#0f172a">Nager.Date</text>
+    <text x="74" y="617" font-size="10.5" fill="#64748b">Public holidays</text>
+  </g>
+    <g>
+    <rect x="40" y="631" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="653" r="5" fill="#E30A17"/>
+    <text x="74" y="651" font-size="13" font-weight="700" fill="#0f172a">Diyanet</text>
+    <text x="74" y="666" font-size="10.5" fill="#64748b">Religious holidays · bayram</text>
+  </g>
+    <g>
+    <rect x="40" y="680" width="186" height="44" rx="10"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1"/>
+    <circle cx="58" cy="702" r="5" fill="#E30A17"/>
+    <text x="74" y="700" font-size="13" font-weight="700" fill="#0f172a">MEB</text>
+    <text x="74" y="715" font-size="10.5" fill="#64748b">School-term breaks</text>
+  </g>
+  </g>
+  <g>
+    <g>
+    <rect x="300" y="208" width="250" height="184" rx="16"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1.4"/>
+    <rect x="300" y="208" width="6" height="184" rx="3" fill="#E30A17"/>
+    <rect x="320" y="230" width="38" height="38" rx="10" fill="#E30A17"/>
+    <text x="339" y="254" text-anchor="middle" font-size="13"
+          font-weight="800" fill="#ffffff">TR</text>
+    <text x="368" y="253" font-size="15.5" font-weight="700" fill="#0f172a">Turkey Agent</text>
+    <line x1="322" y1="280" x2="528" y2="280" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="322" y="304" font-size="11.8" fill="#64748b">Monitors domestic concerts, matches</text><text x="322" y="321" font-size="11.8" fill="#64748b">&amp; festivals across Turkish cities</text>
+    
+    <rect x="474" y="360" width="58" height="20" rx="10"
+          fill="#f5f3ff"
+          stroke="#ddd6fe" stroke-width="1"/>
+    <text x="503" y="374" text-anchor="middle" font-size="9.5"
+          font-weight="700" letter-spacing="0.6"
+          fill="#7c3aed">AGENT</text>
+  </g>
+    <g>
+    <rect x="300" y="448" width="250" height="184" rx="16"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1.4"/>
+    <rect x="300" y="448" width="6" height="184" rx="3" fill="#1d4ed8"/>
+    <rect x="320" y="470" width="38" height="38" rx="10" fill="#1d4ed8"/>
+    <text x="339" y="494" text-anchor="middle" font-size="13"
+          font-weight="800" fill="#ffffff">INT</text>
+    <text x="368" y="493" font-size="15.5" font-weight="700" fill="#0f172a">International Agent</text>
+    <line x1="322" y1="520" x2="528" y2="520" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="322" y="544" font-size="11.8" fill="#64748b">Tracks global events driving inbound</text><text x="322" y="561" font-size="11.8" fill="#64748b">&amp; outbound passenger demand</text>
+    
+    <rect x="474" y="600" width="58" height="20" rx="10"
+          fill="#f5f3ff"
+          stroke="#ddd6fe" stroke-width="1"/>
+    <text x="503" y="614" text-anchor="middle" font-size="9.5"
+          font-weight="700" letter-spacing="0.6"
+          fill="#7c3aed">AGENT</text>
+  </g>
+    <g>
+    <rect x="624" y="218" width="280" height="164" rx="16"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1.4"/>
+    <rect x="624" y="218" width="6" height="164" rx="3" fill="#7c3aed"/>
+    <rect x="644" y="240" width="38" height="38" rx="10" fill="#7c3aed"/>
+    <text x="663" y="264" text-anchor="middle" font-size="13"
+          font-weight="800" fill="#ffffff">IM</text>
+    <text x="692" y="263" font-size="14.5" font-weight="700" fill="#0f172a">Impact Prediction Agent</text>
+    <line x1="646" y1="290" x2="882" y2="290" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="646" y="314" font-size="11.8" fill="#64748b">Scores demand uplift and the</text><text x="646" y="331" font-size="11.8" fill="#64748b">routes affected by each event</text>
+    
+    <rect x="828" y="350" width="58" height="20" rx="10"
+          fill="#f5f3ff"
+          stroke="#ddd6fe" stroke-width="1"/>
+    <text x="857" y="364" text-anchor="middle" font-size="9.5"
+          font-weight="700" letter-spacing="0.6"
+          fill="#7c3aed">AGENT</text>
+  </g>
+    <g>
+    <rect x="624" y="458" width="280" height="164" rx="16"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1.4"/>
+    <rect x="624" y="458" width="6" height="164" rx="3" fill="#7c3aed"/>
+    <rect x="644" y="480" width="38" height="38" rx="10" fill="#7c3aed"/>
+    <text x="663" y="504" text-anchor="middle" font-size="13"
+          font-weight="800" fill="#ffffff">AT</text>
+    <text x="692" y="503" font-size="14.5" font-weight="700" fill="#0f172a">Attendance Prediction Agent</text>
+    <line x1="646" y1="530" x2="882" y2="530" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="646" y="554" font-size="11.8" fill="#64748b">Estimates crowd size and the</text><text x="646" y="571" font-size="11.8" fill="#64748b">share likely to travel by air</text>
+    
+    <rect x="828" y="590" width="58" height="20" rx="10"
+          fill="#f5f3ff"
+          stroke="#ddd6fe" stroke-width="1"/>
+    <text x="857" y="604" text-anchor="middle" font-size="9.5"
+          font-weight="700" letter-spacing="0.6"
+          fill="#7c3aed">AGENT</text>
+  </g>
+    <g>
+    <rect x="980" y="218" width="300" height="164" rx="16"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1.4"/>
+    <rect x="980" y="218" width="6" height="164" rx="3" fill="#059669"/>
+    <rect x="1000" y="240" width="38" height="38" rx="10" fill="#059669"/>
+    <text x="1019" y="264" text-anchor="middle" font-size="13"
+          font-weight="800" fill="#ffffff">LF</text>
+    <text x="1048" y="263" font-size="15.5" font-weight="700" fill="#0f172a">Expected Load Factor</text>
+    <line x1="1002" y1="290" x2="1258" y2="290" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="1002" y="314" font-size="11.8" fill="#64748b">Projected seat occupancy by</text><text x="1002" y="331" font-size="11.8" fill="#64748b">route and date</text>
+    
+    <rect x="1198" y="350" width="64" height="20" rx="10"
+          fill="#ecfdf5"
+          stroke="#a7f3d0" stroke-width="1"/>
+    <text x="1230" y="364" text-anchor="middle" font-size="9.5"
+          font-weight="700" letter-spacing="0.6"
+          fill="#059669">PROJECT</text>
+  </g>
+    <g>
+    <rect x="980" y="458" width="300" height="164" rx="16"
+          fill="#ffffff" stroke="#e2e8f0" stroke-width="1.4"/>
+    <rect x="980" y="458" width="6" height="164" rx="3" fill="#059669"/>
+    <rect x="1000" y="480" width="38" height="38" rx="10" fill="#059669"/>
+    <text x="1019" y="504" text-anchor="middle" font-size="13"
+          font-weight="800" fill="#ffffff">RV</text>
+    <text x="1048" y="503" font-size="15.5" font-weight="700" fill="#0f172a">Expected Revenue</text>
+    <line x1="1002" y1="530" x2="1258" y2="530" stroke="#e2e8f0" stroke-width="1"/>
+    <text x="1002" y="554" font-size="11.8" fill="#64748b">Projected ticket-revenue uplift</text><text x="1002" y="571" font-size="11.8" fill="#64748b">from event-driven demand</text>
+    
+    <rect x="1198" y="590" width="64" height="20" rx="10"
+          fill="#ecfdf5"
+          stroke="#a7f3d0" stroke-width="1"/>
+    <text x="1230" y="604" text-anchor="middle" font-size="9.5"
+          font-weight="700" letter-spacing="0.6"
+          fill="#059669">PROJECT</text>
+  </g>
+  </g>
+</svg>
+      
+  <div class="legend">
+    <div class="lg"><span class="sw" style="background:#E30A17"></span>Turkey Agent</div>
+    <div class="lg"><span class="sw" style="background:#1d4ed8"></span>International Agent</div>
+    <div class="lg"><span class="sw" style="background:#7c3aed"></span>Prediction agent</div>
+    <div class="lg"><span class="sw" style="background:#059669"></span>Output project</div>
+    <div class="lg"><span class="dot" style="background:#E30A17"></span>Turkey-only source</div>
+    <div class="lg"><span class="dot" style="background:#64748b"></span>Shared source</div>
+    <div class="lg"><span class="ln" style="background:#0d9488"></span>Primary forecast link</div>
+    <div class="lg"><span class="ln dash"></span>Secondary link</div>
+  </div>
+    </div>
+    <footer>
+      <b>Load Factor</b> = the share of available seats actually sold on a flight (seat occupancy).
+      Red-dot sources (Biletix, Passo, Diyanet, MEB) are Turkey-specific and feed the Turkey Agent
+      only; the rest feed both agents. Ticketmaster, API-Football, EventsEye and Nager.Date are the
+      connectors implemented in the pipeline today. Solid teal lines mark the primary driver of each
+      output; dashed lines mark a secondary contribution.
+    </footer>
+  </div>
+</body>
+</html>
