@@ -76,5 +76,40 @@ class CollectFootballTest(unittest.TestCase):
         cf.assert_not_called()
 
 
+class CollectCountryEventsTest(unittest.TestCase):
+    """The country-keyed event sources (ticketmaster, eventseye) are each gated."""
+
+    def _run(self, **kw):
+        a = agents.Agent("x", ["TR"], **kw)
+        out: list = []
+        a._collect_events_for_country("TR", date(2026, 8, 1), date(2026, 8, 31), out)
+        return out
+
+    def test_eventseye_skipped_by_default(self):
+        with mock.patch("special_days.sources.eventseye.fetch_events_in_window") as fetch:
+            self._run(eventseye=False)
+        fetch.assert_not_called()  # opt-in, no network
+
+    def test_eventseye_called_when_enabled(self):
+        with mock.patch(
+            "special_days.sources.eventseye.fetch_events_in_window", return_value=[_fx()]
+        ) as fetch:
+            out = self._run(eventseye=True)
+        fetch.assert_called_once()
+        self.assertEqual(fetch.call_args.args[0], "TR")
+        self.assertEqual(len(out), 1)
+
+    def test_one_failing_source_does_not_abort_others(self):
+        # ticketmaster raises; eventseye still runs and its rows survive.
+        with mock.patch(
+            "special_days.sources.ticketmaster.fetch_events", side_effect=RuntimeError("boom")
+        ), mock.patch(
+            "special_days.sources.eventseye.fetch_events_in_window", return_value=[_fx()]
+        ) as eye:
+            out = self._run(ticketmaster_key="K", eventseye=True)
+        eye.assert_called_once()  # ticketmaster raised, eventseye still ran
+        self.assertEqual(len(out), 1)
+
+
 if __name__ == "__main__":
     unittest.main()

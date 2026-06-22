@@ -72,6 +72,16 @@ class PromptRoutingTest(unittest.TestCase):
         self.assertIn("Turkish Airlines", p)
         self.assertNotIn("attendance", p.lower())
 
+    def test_eventseye_prompt_embeds_payload_and_asks_attendance(self):
+        ev = SpecialDate("Trade Fair", date(2026, 5, 1), date(2026, 5, 3), "İstanbul",
+                         "expo", "TR", "eventseye", raw={"name": "Trade Fair", "sector": "MINING-XYZ"})
+        pe = self.scorer._build_prompt(ev)
+        self.assertIn("MINING-XYZ", pe)        # full payload embedded
+        self.assertIn("attendance", pe.lower())
+        self.assertIn("trade fair", pe.lower())  # eventseye-specific framing
+        # distinct from the ticketmaster builder it must not fall back to
+        self.assertNotEqual(pe, self.scorer._build_prompt(event()))
+
 
 class LLMScoreTest(unittest.TestCase):
     def test_event_returns_attendance_and_impact(self):
@@ -82,6 +92,13 @@ class LLMScoreTest(unittest.TestCase):
         # football is an event source -> attendance survives like ticketmaster
         r = scoring.LLMScorer(lambda p: '{"attendance": 41000, "impact": 25}').score(football())
         self.assertEqual((r.impact, r.attendance), (25, 41000))
+
+    def test_eventseye_keeps_attendance(self):
+        # eventseye is an event source -> attendance survives like ticketmaster
+        ev = SpecialDate("F", date(2026, 5, 1), date(2026, 5, 3), "X", "expo", "TR", "eventseye",
+                         raw={"name": "F"})
+        r = scoring.LLMScorer(lambda p: '{"attendance": 12000, "impact": 30}').score(ev)
+        self.assertEqual((r.impact, r.attendance), (30, 12000))
 
     def test_holiday_attendance_forced_none(self):
         # even if the model returns an attendance, holidays must stay null

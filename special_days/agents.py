@@ -12,9 +12,14 @@ from __future__ import annotations
 import logging
 from datetime import date
 
-from .config import DEFAULT_INTERNATIONAL_COUNTRIES, get_football_api_key, get_ticketmaster_key
+from .config import (
+    DEFAULT_INTERNATIONAL_COUNTRIES,
+    eventseye_enabled,
+    get_football_api_key,
+    get_ticketmaster_key,
+)
 from .models import SpecialDate
-from .sources import diyanet, football, meb, nager, ticketmaster
+from .sources import diyanet, eventseye, football, meb, nager, ticketmaster
 
 logger = logging.getLogger(__name__)
 
@@ -28,11 +33,13 @@ class Agent:
         countries: list[str],
         ticketmaster_key: str | None = None,
         football_key: str | None = None,
+        eventseye: bool = False,
     ):
         self.name = name
         self.countries = [c.upper() for c in countries]
         self.ticketmaster_key = ticketmaster_key
         self.football_key = football_key
+        self.eventseye_enabled = eventseye
 
     def collect(
         self,
@@ -56,19 +63,7 @@ class Agent:
                     logger.warning("[%s] holidays failed for %s: %s", self.name, country, exc)
 
             if include_events:
-                if not self.ticketmaster_key:
-                    logger.info(
-                        "[%s] skipping events for %s (no TICKETMASTER_API_KEY set)",
-                        self.name,
-                        country,
-                    )
-                else:
-                    try:
-                        results.extend(
-                            ticketmaster.fetch_events(country, self.ticketmaster_key, start, end)
-                        )
-                    except Exception as exc:  # noqa: BLE001 - resilient collection
-                        logger.warning("[%s] events failed for %s: %s", self.name, country, exc)
+                self._collect_events_for_country(country, start, end, results)
 
         # Football is league- (not country-) keyed, so it runs once after the
         # per-country loop, gated on its own key (skipped cleanly if absent).
@@ -76,6 +71,34 @@ class Agent:
             results.extend(self._collect_football(start, end))
 
         return results
+
+    def _collect_events_for_country(
+        self, country: str, start: date, end: date, results: list[SpecialDate]
+    ) -> None:
+        """Run the country-keyed event sources, each gated and resilient.
+
+        Ticketmaster (concerts/sports/arts) and EventsEye (free corporate/B2B
+        trade-fair scrape) are independent: each is gated on its own credential/
+        flag and a failure on one is logged and skipped so the other still
+        produces output.
+        """
+        # Ticketmaster — concerts/sports/arts, gated on its API key.
+        if self.ticketmaster_key:
+            try:
+                results.extend(ticketmaster.fetch_events(country, self.ticketmaster_key, start, end))
+            except Exception as exc:  # noqa: BLE001 - resilient collection
+                logger.warning("[%s] ticketmaster failed for %s: %s", self.name, country, exc)
+        else:
+            logger.info(
+                "[%s] skipping ticketmaster for %s (no TICKETMASTER_API_KEY set)", self.name, country
+            )
+
+        # EventsEye — free trade-fair scrape, opt-in via EVENTSEYE_ENABLED.
+        if self.eventseye_enabled:
+            try:
+                results.extend(eventseye.fetch_events_in_window(country, start, end))
+            except Exception as exc:  # noqa: BLE001 - resilient collection
+                logger.warning("[%s] eventseye failed for %s: %s", self.name, country, exc)
 
     def _football_leagues(self) -> list[int]:
         """API-Football league ids this agent pulls — top league per country."""
@@ -106,12 +129,18 @@ class Agent:
 class TurkeyAgent(Agent):
     """Domestic agent — Turkey, plus the bundled Diyanet + MEB sources."""
 
-    def __init__(self, ticketmaster_key: str | None = None, football_key: str | None = None):
+    def __init__(
+        self,
+        ticketmaster_key: str | None = None,
+        football_key: str | None = None,
+        eventseye: bool | None = None,
+    ):
         super().__init__(
             name="turkey",
             countries=["TR"],
             ticketmaster_key=ticketmaster_key if ticketmaster_key is not None else get_ticketmaster_key(),
             football_key=football_key if football_key is not None else get_football_api_key(),
+            eventseye=eventseye if eventseye is not None else eventseye_enabled(),
         )
 
     def _football_leagues(self):
@@ -136,12 +165,14 @@ class InternationalAgent(Agent):
         countries: list[str] | None = None,
         ticketmaster_key: str | None = None,
         football_key: str | None = None,
+        eventseye: bool | None = None,
     ):
         super().__init__(
             name="international",
             countries=countries or DEFAULT_INTERNATIONAL_COUNTRIES,
             ticketmaster_key=ticketmaster_key if ticketmaster_key is not None else get_ticketmaster_key(),
             football_key=football_key if football_key is not None else get_football_api_key(),
+            eventseye=eventseye if eventseye is not None else eventseye_enabled(),
         )
 
     def _football_leagues(self):

@@ -80,5 +80,31 @@ class FootballKeyTest(unittest.TestCase):
         self.assertIsNone(config.get_football_api_key())
 
 
+class EventseyeEnabledTest(unittest.TestCase):
+    def setUp(self):
+        self._saved = os.environ.get(config.EVENTSEYE_ENABLED_ENV)
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        if self._saved is None:
+            os.environ.pop(config.EVENTSEYE_ENABLED_ENV, None)
+        else:
+            os.environ[config.EVENTSEYE_ENABLED_ENV] = self._saved
+
+    def test_off_by_default(self):
+        os.environ.pop(config.EVENTSEYE_ENABLED_ENV, None)
+        self.assertFalse(config.eventseye_enabled())
+
+    def test_truthy_values_enable(self):
+        for value in ("1", "true", "TRUE", "yes", "on"):
+            os.environ[config.EVENTSEYE_ENABLED_ENV] = value
+            self.assertTrue(config.eventseye_enabled(), value)
+
+    def test_other_values_stay_off(self):
+        for value in ("0", "false", "no", ""):
+            os.environ[config.EVENTSEYE_ENABLED_ENV] = value
+            self.assertFalse(config.eventseye_enabled(), value)
+
+
 if __name__ == "__main__":
     unittest.main()
