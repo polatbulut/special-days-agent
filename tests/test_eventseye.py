@@ -126,7 +126,7 @@ class ParseRowTest(unittest.TestCase):
 class FetchEventsTest(unittest.TestCase):
     def test_unmapped_country_skipped_without_fetch(self):
         with mock.patch("special_days.sources.eventseye.get_text") as get_text:
-            rows = eventseye.fetch_events_in_window("JP", *WINDOW)  # JP not in COUNTRY_SLUG
+            rows = eventseye.fetch_events_in_window("ZZ", *WINDOW)  # ZZ: not a real country, unmapped
         self.assertEqual(rows, [])
         get_text.assert_not_called()
 
