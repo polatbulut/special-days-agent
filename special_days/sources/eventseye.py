@@ -41,17 +41,47 @@ logger = logging.getLogger(__name__)
 BASE_URL = "https://www.eventseye.com/fairs/"
 LISTING_URL = BASE_URL + "c1_trade-shows_{slug}.html"
 
-# ISO-3166 alpha-2 -> EventsEye country-slug (the site uses full-name slugs).
-# Extend this map to add markets; an unmapped country is skipped, not guessed.
+# ISO-3166 alpha-2 -> EventsEye country-slug (the site uses full-name slugs, not
+# always the obvious lowercased name -- e.g. GB, US, KR). Slugs below are verified
+# against the live site. Extend by copying the <slug> from a country's listing URL
+# (c1_trade-shows_<slug>.html); an unmapped country is skipped, not guessed.
 COUNTRY_SLUG = {
-    "TR": "turkey",
-    "DE": "germany",
-    "GB": "uk-united-kingdom",
-    "FR": "france",
-    "NL": "netherlands",
-    "US": "usa-united-states-of-america",
-    "ES": "spain",
-    "IT": "italy",
+    # Türkiye + default international markets
+    "TR": "turkey", "DE": "germany", "GB": "uk-united-kingdom", "FR": "france",
+    "NL": "netherlands", "US": "usa-united-states-of-america", "ES": "spain", "IT": "italy",
+    # Europe
+    "AT": "austria", "BE": "belgium", "CH": "switzerland", "PL": "poland",
+    "SE": "sweden", "NO": "norway", "DK": "denmark", "FI": "finland",
+    "PT": "portugal", "GR": "greece", "IE": "ireland", "CZ": "czech-republic",
+    "HU": "hungary", "RO": "romania", "RU": "russia", "UA": "ukraine",
+    "BG": "bulgaria", "HR": "croatia", "RS": "serbia", "SK": "slovakia",
+    "SI": "slovenia", "LT": "lithuania", "LV": "latvia", "EE": "estonia",
+    "IS": "iceland", "LU": "luxembourg", "MT": "malta", "CY": "cyprus",
+    "AL": "albania", "ME": "montenegro", "MD": "moldova", "BY": "belarus",
+    "XK": "kosovo", "BA": "bosnia-herzegovina", "MC": "monaco",
+    # Caucasus & Central Asia
+    "AZ": "azerbaijan", "GE": "georgia", "AM": "armenia", "KZ": "kazakhstan",
+    "UZ": "uzbekistan", "KG": "kyrgyzstan", "TM": "turkmenistan", "MN": "mongolia",
+    # Middle East
+    "SA": "saudi-arabia", "QA": "qatar", "KW": "kuwait", "EG": "egypt",
+    "IL": "israel", "IR": "iran",
+    # Asia
+    "CN": "china", "IN": "india", "JP": "japan", "KR": "korea-south",
+    "SG": "singapore", "HK": "hong-kong", "TW": "taiwan", "TH": "thailand",
+    "MY": "malaysia", "ID": "indonesia", "VN": "vietnam", "PH": "philippines",
+    "PK": "pakistan", "BD": "bangladesh", "LK": "sri-lanka", "NP": "nepal",
+    "MO": "macao", "MV": "maldives", "KH": "cambodia", "BT": "bhutan",
+    # Americas
+    "CA": "canada", "BR": "brazil", "MX": "mexico", "AR": "argentina",
+    "CL": "chile", "CO": "colombia", "PE": "peru", "EC": "ecuador",
+    "BO": "bolivia", "PY": "paraguay", "CR": "costa-rica", "PA": "panama",
+    "GT": "guatemala", "DO": "dominican-republic", "CU": "cuba", "PR": "puerto-rico",
+    "JM": "jamaica", "SV": "salvador", "BS": "bahamas",
+    # Africa
+    "ZA": "south-africa", "MA": "morocco", "NG": "nigeria", "KE": "kenya",
+    "MU": "mauritius",
+    # Oceania
+    "AU": "australia", "NZ": "new-zealand", "FJ": "fiji",
 }
 
 _TABLE_RE = re.compile(r'<table class="tradeshows">(.*?)</table>', re.DOTALL)
