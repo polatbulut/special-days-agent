@@ -121,9 +121,41 @@ class LLMScoreTest(unittest.TestCase):
     def test_fallback_ignores_year_in_reply(self):
         self.assertEqual(scoring.LLMScorer(lambda p: "In 2026 I rate this 90").score(event()).impact, 90)
 
-    def test_raises_on_no_number(self):
+    def test_parse_raises_on_no_number(self):
+        # _parse still signals an unparseable reply...
         with self.assertRaises(ValueError):
-            scoring.LLMScorer(lambda p: "n/a").score(event())
+            scoring.LLMScorer(lambda p: "n/a")._parse("n/a")
+
+    def test_unparseable_reply_falls_back_to_heuristic(self):
+        # ...but score() is fail-soft: it degrades to the heuristic, never raises.
+        ev = event(distance=10)
+        expected = scoring.HeuristicScorer().score(ev)
+        got = scoring.LLMScorer(lambda p: "n/a").score(ev)
+        self.assertEqual(got, expected)
+
+    def test_empty_reply_falls_back_to_heuristic(self):
+        # the exact server failure: Azure returned '' -> heuristic, no crash
+        ev = event(distance=10)
+        got = scoring.LLMScorer(lambda p: "").score(ev)
+        self.assertEqual(got, scoring.HeuristicScorer().score(ev))
+
+    def test_model_call_error_falls_back_to_heuristic(self):
+        def boom(prompt):
+            raise RuntimeError("HTTP 429 Too Many Requests")
+
+        ev = event(distance=10)
+        got = scoring.LLMScorer(boom).score(ev)
+        self.assertEqual(got, scoring.HeuristicScorer().score(ev))
+
+    def test_custom_fallback_is_used(self):
+        sentinel = scoring.ScoreResult(7, None)
+
+        class _Stub:
+            def score(self, record):
+                return sentinel
+
+        got = scoring.LLMScorer(lambda p: "", fallback=_Stub()).score(event())
+        self.assertEqual(got, sentinel)
 
 
 class GetScorerTest(unittest.TestCase):
