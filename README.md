@@ -240,6 +240,14 @@ estimate attendance from the event facts (EventsEye carries no headcount).
 > it blank). Event prompts send the full payload, so input-token cost rises with
 > the feed size — scope LLM runs with `--source` / `--agent`.
 
+> **LLM scoring is fail-soft.** If a model call errors (network, throttling/429)
+> or returns an empty/unparseable reply for a record, that one record falls back
+> to the heuristic score (logged as a warning) — a single bad reply never aborts
+> the run. Two knobs keep replies *usable* rather than fallen-back: keep
+> `--concurrency` under the deployment's rate limit (429s) and give reasoning
+> models enough `AZURE_OPENAI_MAX_COMPLETION_TOKENS` (an exhausted budget returns
+> empty content, which then falls back).
+
 All LLM backends share one OpenAI-compatible client
 ([`special_days/gateways.py`](special_days/gateways.py)); pick the model with
 `--llm-model`. Examples:
