@@ -172,6 +172,12 @@ Or via the Makefile: `make docker-run ARGS="--agent both --format xlsx -o out/sp
 
 ## Canonical record, bridges & impact
 
+> 📐 **For the exact formulas, constants, edge cases and worked examples of every
+> calculation** — window math, the haversine airport mapping, both impact scorers,
+> the köprü bridge and the per-day curves — see
+> **[docs/CALCULATIONS.md](docs/CALCULATIONS.md)**. The summary below is the
+> overview; that document is the precise, code-grounded reference.
+
 Every source maps into one `SpecialDate` (see [`special_days/models.py`](special_days/models.py)).
 Output columns: Event, Start date, End date, City, Source (nager/diyanet/meb/
 ticketmaster/football/eventseye), Nearest airport, Impact, Predicted attendance,
