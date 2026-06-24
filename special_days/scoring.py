@@ -4,18 +4,23 @@
 heuristic. ``LLMScorer`` prompts an LLM gateway (OpenAI or vLLM) per record with
 a per-source prompt and parses a structured result: an impact score (0-100,
 framed as the effect on Turkish Airlines ticket sales) and — for events — a
-predicted attendance.
+predicted attendance. ``LLMScorer`` is fail-soft: a failed call or an
+unparseable/empty reply for one record falls back to the heuristic (logged) so a
+single bad reply never aborts a large batch.
 """
 
 from __future__ import annotations
 
 import json
+import logging
 import re
 from datetime import date
 from typing import Callable, NamedTuple, Protocol
 
 from .gateways import make_gateway
 from .models import SpecialDate
+
+logger = logging.getLogger(__name__)
 
 # Base impact by category, before duration/proximity adjustments.
 _CATEGORY_WEIGHT = {
@@ -223,13 +228,31 @@ def _coerce_attendance(value) -> int | None:
 
 
 class LLMScorer:
-    """Scores a record by prompting an LLM gateway (a ``prompt -> reply`` callable)."""
+    """Scores a record by prompting an LLM gateway (a ``prompt -> reply`` callable).
 
-    def __init__(self, call_model: Callable[[str], str]):
+    Resilient by design: if the model call fails (network/HTTP error, throttling)
+    or returns an unparseable/empty reply, scoring of that one record falls back
+    to ``fallback`` (the offline heuristic by default) and logs a warning, rather
+    than aborting the whole run. This matches the fail-soft collection stage — a
+    single bad reply in a large batch must not discard every other scored row.
+    """
+
+    def __init__(
+        self,
+        call_model: Callable[[str], str],
+        fallback: "Scorer | None" = None,
+    ):
         self._model_fn = call_model
+        self._fallback = fallback or HeuristicScorer()
 
     def score(self, record: SpecialDate) -> ScoreResult:
-        impact, attendance = self._parse(self._model_fn(self._build_prompt(record)))
+        try:
+            impact, attendance = self._parse(self._model_fn(self._build_prompt(record)))
+        except Exception as exc:  # noqa: BLE001 - degrade one record, never abort the batch
+            logger.warning(
+                "LLM scoring failed for %r (%s); using heuristic fallback", record.event, exc
+            )
+            return self._fallback.score(record)
         if record.source not in _EVENT_SOURCES:
             attendance = None  # attendance is an event concept only (holidays have none)
         return ScoreResult(impact, attendance)
