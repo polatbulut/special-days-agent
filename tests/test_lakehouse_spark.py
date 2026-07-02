@@ -1,8 +1,10 @@
 """Integration test for the lakehouse Spark write — skipped when pyspark (or a
 working local Spark/Java) is unavailable, so the offline suite still passes.
 
-On the THY cluster (or any box with pyspark + Java) this writes both tables to a
-temp warehouse and reads them back, exercising the real schemas and saveAsTable.
+On the THY cluster (or any box with pyspark + Java) this writes both Parquet
+datasets to a temp dir and reads them back, exercising the real schemas and the
+path-only write. OBS itself is not needed here (a local filesystem path stands in
+for the obs:// location); ``configure_obs`` is unit-tested separately.
 """
 
 import shutil
@@ -57,6 +59,7 @@ class LakehouseSparkRoundtripTest(unittest.TestCase):
         except Exception as exc:  # Java missing etc. -> skip rather than error
             shutil.rmtree(cls.tmp, ignore_errors=True)
             raise unittest.SkipTest(f"cannot start local Spark: {exc}")
+        cls.location = cls.tmp + "/lake"
 
     @classmethod
     def tearDownClass(cls):
@@ -64,38 +67,42 @@ class LakehouseSparkRoundtripTest(unittest.TestCase):
             cls.spark.stop()
         shutil.rmtree(cls.tmp, ignore_errors=True)
 
-    def test_write_creates_both_tables(self):
-        run_id = lakehouse.write(
-            _records(),
-            spark=self.spark,
-            database="special_events_test",
-            location=self.tmp + "/lake",
-        )
+    def test_write_creates_both_datasets(self):
+        run_id = lakehouse.write(_records(), spark=self.spark, location=self.location)
         self.assertTrue(run_id)
 
-        raw = self.spark.table("special_events_test.special_days_raw")
+        raw = self.spark.read.parquet(f"{self.location}/special_days_raw")
         self.assertEqual(raw.count(), 2)
-        self.assertEqual(list(raw.columns), list(lakehouse.RAW_COLUMNS))
+        self.assertEqual(set(raw.columns), set(lakehouse.RAW_COLUMNS))
 
-        feat = self.spark.table("special_events_test.special_days_features")
-        self.assertEqual(list(feat.columns), list(lakehouse.FEATURE_COLUMNS))
+        feat = self.spark.read.parquet(f"{self.location}/special_days_features")
+        self.assertEqual(set(feat.columns), set(lakehouse.FEATURE_COLUMNS))
         # 3 national-holiday days (None airport) + 2 event days (IST) = 5 cells.
         self.assertEqual(feat.count(), 5)
-
         # National holiday rows are preserved with a NULL airport (not dropped).
-        national = feat.where("airport IS NULL").count()
-        self.assertEqual(national, 3)
+        self.assertEqual(feat.where("airport IS NULL").count(), 3)
 
     def test_overwrite_is_idempotent(self):
+        loc = self.tmp + "/lake_idem"
         for _ in range(2):
-            lakehouse.write(
-                _records(),
-                spark=self.spark,
-                database="special_events_test",
-                location=self.tmp + "/lake",
-            )
-        feat = self.spark.table("special_events_test.special_days_features")
+            lakehouse.write(_records(), spark=self.spark, location=loc)
+        feat = self.spark.read.parquet(f"{loc}/special_days_features")
         self.assertEqual(feat.count(), 5)  # overwrite, not append
+
+    def test_configure_obs_noop_without_creds(self):
+        # Missing any of endpoint/AK/SK -> no-op, returns False, no error.
+        self.assertFalse(lakehouse.configure_obs(self.spark, endpoint="x", access_key="y", secret_key=None))
+        self.assertFalse(lakehouse.configure_obs(self.spark))
+
+    def test_configure_obs_sets_hadoop_conf(self):
+        applied = lakehouse.configure_obs(
+            self.spark, endpoint="bigdata-dev.obs", access_key="AK123", secret_key="SK456"
+        )
+        self.assertTrue(applied)
+        hconf = self.spark.sparkContext._jsc.hadoopConfiguration()
+        self.assertEqual(hconf.get("fs.obs.endpoint"), "bigdata-dev.obs")
+        self.assertEqual(hconf.get("fs.obs.access.key"), "AK123")
+        self.assertEqual(hconf.get("fs.obs.impl"), "org.apache.hadoop.fs.obs.OBSFileSystem")
 
 
 if __name__ == "__main__":

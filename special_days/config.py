@@ -18,6 +18,10 @@ AZURE_OPENAI_API_KEY_ENV = "AZURE_OPENAI_API_KEY"
 AZURE_OPENAI_DEPLOYMENT_ENV = "AZURE_OPENAI_DEPLOYMENT"
 AZURE_OPENAI_API_VERSION_ENV = "AZURE_OPENAI_API_VERSION"
 AZURE_OPENAI_MAX_COMPLETION_TOKENS_ENV = "AZURE_OPENAI_MAX_COMPLETION_TOKENS"
+# OBS (Huawei object storage) — where the Spark job writes the lakehouse Parquet.
+OBS_ENDPOINT_ENV = "OBS_ENDPOINT"
+OBS_ACCESS_KEY_ENV = "OBS_ACCESS_KEY"
+OBS_SECRET_KEY_ENV = "OBS_SECRET_KEY"
 
 # Default destination markets for the international agent. Kept short on
 # purpose — override with `--countries` on the CLI.
@@ -130,3 +134,18 @@ def get_azure_max_completion_tokens() -> int | None:
         return int(raw)
     except ValueError:
         return None
+
+
+def get_obs_endpoint() -> str | None:
+    """Return the OBS endpoint (e.g. ``bigdata-dev.obs``), or ``None``."""
+    return _env(OBS_ENDPOINT_ENV)
+
+
+def get_obs_access_key() -> str | None:
+    """Return the OBS access key (AK) for the write-scoped service account, or ``None``."""
+    return _env(OBS_ACCESS_KEY_ENV)
+
+
+def get_obs_secret_key() -> str | None:
+    """Return the OBS secret key (SK), or ``None`` (not stripped: secrets are literal)."""
+    return os.environ.get(OBS_SECRET_KEY_ENV) or None
