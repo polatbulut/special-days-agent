@@ -1,26 +1,33 @@
-"""Write the collected feed to the THY Spark lakehouse (Hive / Parquet).
+"""Write the collected feed to the THY lakehouse as Parquet on Huawei OBS.
 
 The whole pipeline runs on the Spark nonprod cluster (it has internet egress)::
 
-    scrape -> enrich -> build two Spark DataFrames -> two Hive/Parquet tables
+    scrape -> enrich -> build two Spark DataFrames -> two Parquet datasets on OBS
 
-Two tables are written under one lakehouse location (default
-``/lakehouse/special_events``, database ``special_events``):
+Two Parquet datasets are written under one OBS location (default
+``obs://lakehouse-dev/special_events``) — **path-only**, no Hive metastore:
+consumers read them by path (register catalog tables later if wanted).
 
-``special_days_raw`` — **span grain**, one row per :class:`SpecialDate`, with the
-per-day impact curves kept as JSON strings. The audit / reprocess layer.
+``special_days_raw`` (``<location>/special_days_raw``) — **span grain**, one row
+per :class:`SpecialDate`, with the per-day impact curves kept as JSON strings.
+The audit / reprocess layer.
 
-``special_days_features`` — **day x airport feature grain**. The statutory and
-bridge per-day curves are merged (per-day max) and exploded to one row per
-``(event_date, country, airport)``. National holidays have no single airport, so
-they are kept with ``airport = NULL`` (country populated) rather than dropped —
-they are nationwide demand and the biggest signal in the feed.
+``special_days_features`` (``<location>/special_days_features``) — **day x airport
+feature grain**. The statutory and bridge per-day curves are merged (per-day max)
+and exploded to one row per ``(event_date, country, airport)``. National holidays
+have no single airport, so they are kept with ``airport = NULL`` (country
+populated) rather than dropped — they are nationwide demand and the biggest
+signal in the feed.
+
+OBS access (endpoint + AK/SK for the write-scoped service account) is applied to
+the Spark session by :func:`configure_obs` from environment values — never
+hardcoded. On a cluster that already injects OBS credentials into the session,
+that step is a no-op.
 
 Design: the pure-Python row builders (:func:`record_key`, :func:`to_raw_rows`,
 :func:`explode_features`) hold *all* the business logic and are unit-tested
-without Spark. ``pyspark`` is imported lazily inside :func:`write` and
-:func:`build_schemas`, so importing this module on a laptop with no Spark
-installed is fine.
+without Spark. ``pyspark`` is imported lazily inside :func:`build_schemas`, so
+importing this module on a laptop with no Spark installed is fine.
 """
 
 from __future__ import annotations
@@ -34,8 +41,7 @@ from typing import Iterable
 
 from ..models import SpecialDate
 
-DEFAULT_DATABASE = "special_events"
-DEFAULT_LOCATION = "/lakehouse/special_events"
+DEFAULT_LOCATION = "obs://lakehouse-dev/special_events"
 DEFAULT_RAW_TABLE = "special_days_raw"
 DEFAULT_FEATURE_TABLE = "special_days_features"
 
@@ -248,19 +254,40 @@ def build_schemas():
     return raw, feature
 
 
-def _save(df, database: str, table: str, location: str, mode: str) -> None:
-    """Write ``df`` as an external Parquet table ``database.table``.
+def configure_obs(spark, *, endpoint=None, access_key=None, secret_key=None) -> bool:
+    """Point the Spark session's Hadoop config at Huawei OBS (``obs://`` scheme).
 
-    The explicit ``path`` option makes the table external (data files persist
-    under ``location/table`` independent of the metastore). ``coalesce(1)`` keeps
-    the tiny feed to a single Parquet file instead of many small ones.
+    Sets the OBSA filesystem impl + endpoint + AK/SK on the live session's Hadoop
+    configuration so ``df.write.parquet('obs://...')`` authenticates. Returns
+    ``True`` if it applied credentials, ``False`` if it did nothing.
+
+    **No-op unless all three of** ``endpoint``/``access_key``/``secret_key`` are
+    provided — on a cluster that already injects OBS credentials into the session,
+    leave them unset and this is skipped. Credentials come from the environment
+    (see the ``OBS_*`` vars in ``.env.example``), never hardcoded. The OBSA
+    connector jar (``hadoop-huaweicloud``) must be on the Spark classpath.
+    """
+    if not (endpoint and access_key and secret_key):
+        return False
+    hconf = spark.sparkContext._jsc.hadoopConfiguration()
+    hconf.set("fs.obs.impl", "org.apache.hadoop.fs.obs.OBSFileSystem")
+    hconf.set("fs.AbstractFileSystem.obs.impl", "org.apache.hadoop.fs.obs.OBS")
+    hconf.set("fs.obs.endpoint", endpoint)
+    hconf.set("fs.obs.access.key", access_key)
+    hconf.set("fs.obs.secret.key", secret_key)
+    return True
+
+
+def _save(df, location: str, table: str, mode: str) -> None:
+    """Write ``df`` as Parquet objects under ``location/table`` (path-only).
+
+    No Hive metastore: consumers read by path (``obs://.../<table>``).
+    ``coalesce(1)`` keeps the tiny feed to a single Parquet object.
     """
     (
         df.coalesce(1)
         .write.mode(mode)
-        .format("parquet")
-        .option("path", f"{location.rstrip('/')}/{table}")
-        .saveAsTable(f"{database}.{table}")
+        .parquet(f"{location.rstrip('/')}/{table}")
     )
 
 
@@ -268,7 +295,6 @@ def write(
     records: Iterable[SpecialDate],
     *,
     spark,
-    database: str = DEFAULT_DATABASE,
     location: str = DEFAULT_LOCATION,
     raw_table: str = DEFAULT_RAW_TABLE,
     feature_table: str = DEFAULT_FEATURE_TABLE,
@@ -276,20 +302,16 @@ def write(
     run_id: str | None = None,
     load_ts: datetime | None = None,
 ) -> str:
-    """Write the raw span table and the day x airport feature table; return run id.
+    """Write both Parquet datasets under ``location`` (path-only); return run id.
 
-    ``spark`` is an active ``SparkSession`` (with Hive support). ``run_id`` /
-    ``load_ts`` default to a fresh UUID and the current UTC time and are stamped
-    on every row of this run for point-in-time freshness. ``mode='overwrite'``
-    does a full daily refresh — idempotent and trivial at this volume.
-
-    Everything this writes — both table directories *and* the database's own
-    directory — lands under ``location``. The dev service account is granted
-    write only under the ``special_events`` prefix (read-only over the rest of the
-    lakehouse), so the database is created with an explicit ``LOCATION`` inside
-    that prefix rather than the default Hive warehouse (which the account can't
-    write to). ``IF NOT EXISTS`` makes the create a no-op if the storage team
-    pre-provisioned the database.
+    ``spark`` is an active ``SparkSession`` (call :func:`configure_obs` first if
+    the session needs OBS credentials). ``run_id`` / ``load_ts`` default to a
+    fresh UUID and the current UTC time and are stamped on every row for
+    point-in-time freshness. ``mode='overwrite'`` does a full daily refresh —
+    idempotent and trivial at this volume. Both datasets land under ``location``
+    (``<location>/special_days_raw`` and ``<location>/special_days_features``),
+    which for the dev account must be inside the writable ``special_events``
+    prefix.
     """
     records = list(records)
     run_id = run_id or uuid.uuid4().hex
@@ -301,7 +323,6 @@ def write(
         explode_features(records, run_id, load_ts), schema=feature_schema
     )
 
-    spark.sql(f"CREATE DATABASE IF NOT EXISTS {database} LOCATION '{location}'")
-    _save(raw_df, database, raw_table, location, mode)
-    _save(feature_df, database, feature_table, location, mode)
+    _save(raw_df, location, raw_table, mode)
+    _save(feature_df, location, feature_table, mode)
     return run_id

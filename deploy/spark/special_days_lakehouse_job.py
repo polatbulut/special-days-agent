@@ -1,28 +1,38 @@
-"""Spark batch job: scrape -> enrich -> write the special_events lakehouse tables.
+"""Spark batch job: scrape -> enrich -> write the lakehouse Parquet datasets on OBS.
 
 Runs entirely on the THY Spark nonprod cluster (it has internet egress). It
 collects the next N months of special dates, enriches them with the **heuristic**
-scorer (no live LLM calls in a scheduled job), and writes two Hive/Parquet tables
-under ``/lakehouse/special_events``::
+scorer (no live LLM calls in a scheduled job), and writes two Parquet datasets
+(path-only, no Hive metastore) under ``obs://lakehouse-dev/special_events``::
 
-    special_events.special_days_raw       span grain (one row per special date)
-    special_events.special_days_features  day x airport feature grain
+    <location>/special_days_raw       span grain (one row per special date)
+    <location>/special_days_features  day x airport feature grain
 
-Run on the cluster after ``git pull`` (a JupyterHub terminal or an edge node)::
+Run on the cluster after ``git pull`` (a JupyterHub terminal or an edge node).
+The OBSA connector jar must be on the classpath (``--jars`` if the cluster does
+not already provide it)::
 
-    spark-submit deploy/spark/special_days_lakehouse_job.py --months 12
+    spark-submit \
+        --jars /path/to/hadoop-huaweicloud.jar \
+        deploy/spark/special_days_lakehouse_job.py --months 12
 
 Configuration (flag, or the matching env var):
 
-    --database / SPECIAL_DAYS_DB         (default: special_events)
-    --location / SPECIAL_DAYS_LOCATION   (default: /lakehouse/special_events)
+    --location / SPECIAL_DAYS_LOCATION   (default: obs://lakehouse-dev/special_events)
     --months   / SPECIAL_DAYS_MONTHS     (default: 12)
     --start    YYYY-MM-DD                 (default: today)
     --countries CSV ISO codes for the international agent (default: built-in list)
 
-Source API keys (Ticketmaster / API-Football) and EVENTSEYE_ENABLED are read from
-the environment / a ``.env`` file if present; missing ones are skipped cleanly,
-so a no-key run still lands all the holiday sources.
+OBS access (read all of the bucket, write only under /special_events) comes from
+the environment / a ``.env`` file — never hardcoded:
+
+    OBS_ENDPOINT      e.g. bigdata-dev.obs
+    OBS_ACCESS_KEY    the service account's AK
+    OBS_SECRET_KEY    the service account's SK
+
+Leave the OBS_* vars unset if the cluster already injects OBS credentials into
+the Spark session. Source API keys (Ticketmaster / API-Football) and
+EVENTSEYE_ENABLED are read the same way; missing ones are skipped cleanly.
 """
 
 from __future__ import annotations
@@ -40,7 +50,12 @@ sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..",
 from pyspark.sql import SparkSession  # noqa: E402  (after the sys.path tweak)
 
 from special_days.agents import InternationalAgent, TurkeyAgent  # noqa: E402
-from special_days.config import load_dotenv  # noqa: E402
+from special_days.config import (  # noqa: E402
+    get_obs_access_key,
+    get_obs_endpoint,
+    get_obs_secret_key,
+    load_dotenv,
+)
 from special_days.enrich import (  # noqa: E402
     DEFAULT_CATCHMENT_KM,
     DEFAULT_MAX_EVENT_SPAN_DAYS,
@@ -56,8 +71,7 @@ logger = logging.getLogger("special_days.lakehouse_job")
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    p = argparse.ArgumentParser(description="Write the special-days feed to the lakehouse.")
-    p.add_argument("--database", default=os.environ.get("SPECIAL_DAYS_DB", lakehouse.DEFAULT_DATABASE))
+    p = argparse.ArgumentParser(description="Write the special-days feed to the OBS lakehouse.")
     p.add_argument("--location", default=os.environ.get("SPECIAL_DAYS_LOCATION", lakehouse.DEFAULT_LOCATION))
     p.add_argument("--months", type=int, default=int(os.environ.get("SPECIAL_DAYS_MONTHS", "12")))
     p.add_argument("--start", default=None, help="Window start YYYY-MM-DD (default: today).")
@@ -81,7 +95,7 @@ def collect_records(start: date, end: date, countries: list[str] | None) -> list
 def main(argv: list[str] | None = None) -> int:
     args = parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-    load_dotenv()  # optional on the cluster: picks up source API keys if present
+    load_dotenv()  # optional on the cluster: picks up OBS_* and source API keys if present
 
     countries = (
         [c.strip() for c in args.countries.split(",") if c.strip()]
@@ -98,23 +112,23 @@ def main(argv: list[str] | None = None) -> int:
     records.sort(key=SpecialDate.sort_key)
     logger.info("Collected %d special date(s)", len(records))
 
-    spark = (
-        SparkSession.builder
-        .appName("special-days-lakehouse")
-        .enableHiveSupport()
-        .getOrCreate()
-    )
+    spark = SparkSession.builder.appName("special-days-lakehouse").getOrCreate()
     try:
-        run_id = lakehouse.write(
-            records, spark=spark, database=args.database, location=args.location
+        applied = lakehouse.configure_obs(
+            spark,
+            endpoint=get_obs_endpoint(),
+            access_key=get_obs_access_key(),
+            secret_key=get_obs_secret_key(),
         )
+        logger.info("OBS credentials %s", "applied from env" if applied else "not set (using cluster defaults)")
+        run_id = lakehouse.write(records, spark=spark, location=args.location)
     finally:
         spark.stop()
 
     print(
         f"Wrote {len(records)} special date(s) -> "
-        f"{args.database}.{lakehouse.DEFAULT_RAW_TABLE} + "
-        f"{args.database}.{lakehouse.DEFAULT_FEATURE_TABLE} (run_id={run_id})"
+        f"{args.location}/{lakehouse.DEFAULT_RAW_TABLE} + "
+        f"{args.location}/{lakehouse.DEFAULT_FEATURE_TABLE} (run_id={run_id})"
     )
     return 0
 
