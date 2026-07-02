@@ -272,6 +272,7 @@ def main(argv: list[str] | None = None) -> int:
     rows = drop_long_events(rows, args.max_event_span_days)
     rows = enrich(rows, catchment_km=args.catchment_km, scorer=scorer, concurrency=concurrency)
     rows.sort(key=SpecialDate.sort_key)
+
     if args.limit is not None:
         rows = rows[: args.limit]
 
