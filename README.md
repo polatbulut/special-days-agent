@@ -120,6 +120,60 @@ The rolling window (`--months`) makes this a drop-in for any scheduler — wire
 the command up to run as often as you like (cron, CI, a task runner, …). No
 scheduler is bundled.
 
+### Lakehouse path (Spark → Hive/Parquet feature store)
+
+For the forecasting feature store, the feed lands directly in the Spark lakehouse.
+The scraper runs **on the Spark cluster** (which has internet egress), enriches in
+Python, and writes two Hive/Parquet tables — no Oracle hop, no S3 staging:
+
+```
+scrape → enrich → Spark DataFrames → Hive/Parquet under /lakehouse/special_events
+                                       ├─ special_events.special_days_raw      (span grain)
+                                       └─ special_events.special_days_features (day × airport)
+```
+
+- **`special_days_raw`** — one row per special date (the audit / reprocess layer),
+  with the per-day impact curves kept as JSON strings.
+- **`special_days_features`** — the model-ready grain: the statutory and bridge
+  per-day curves are merged (per-day max) and exploded to one row per
+  `(event_date, country, airport)`. **National holidays** (no single airport) are
+  kept with `airport = NULL` and `country` populated — they are nationwide demand,
+  the biggest signal in the feed, so they are never dropped. Per cell:
+  `impact` = max weight, `predicted_attendance` = sum, `sources` = distinct list,
+  `n_events` = count.
+- Full **overwrite** each run (idempotent; trivial at this volume). A deterministic
+  `record_key` (SHA-1 of the natural business key) keeps the raw table one row per
+  special date across re-runs.
+
+The sink is [`special_days/sinks/lakehouse.py`](special_days/sinks/lakehouse.py)
+(pure-Python row builders + a thin, lazily-imported Spark writer). Run it on the
+cluster after `git pull` two ways:
+
+```bash
+# 1) spark-submit (batch / scheduled)
+spark-submit deploy/spark/special_days_lakehouse_job.py --months 12
+
+# 2) interactively in JupyterHub
+#    open notebooks/special_days_lakehouse.ipynb and run the cells
+```
+
+Overrides (flag or env): `--database` / `SPECIAL_DAYS_DB` (default `special_events`),
+`--location` / `SPECIAL_DAYS_LOCATION` (default `/lakehouse/special_events`),
+`--months` / `SPECIAL_DAYS_MONTHS`. Scheduling is left to the platform (a notebook
+run now; Airflow / a cron `spark-submit` later) — the rolling window makes it a
+drop-in for any cadence.
+
+**Storage & access model.** The lakehouse is an object-store bucket; the dev
+service account is granted **read over all of `/lakehouse` but write only under the
+`/special_events` prefix**. The job honours that: both table directories *and* the
+database's own directory (`CREATE DATABASE … LOCATION '<location>'`) are written
+**inside `--location`**, so nothing is written outside the writable prefix. Point
+`--location` at whatever URI the storage team provisions for that folder — a mounted
+`/lakehouse/special_events` path, or an object-store URI such as
+`obs://<bucket>/special_events` / `s3a://<bucket>/special_events`. If the account
+can't `CREATE DATABASE`, have the platform team pre-create `special_events` pointing
+at that folder; the job's `IF NOT EXISTS` then no-ops.
+
 ## CLI
 
 ```
@@ -300,8 +354,14 @@ special_days/
   enrich.py        airport mapping + scoring + bridges + curves + noise filter
   output.py        table / csv / json renderers
   xlsx_writer.py   Excel (.xlsx) writer (openpyxl)
+  sinks/
+    lakehouse.py   Spark lakehouse sink: raw span + day×airport feature tables
   cli.py           argument parsing + orchestration
-tests/             unittest suite (no network)
+deploy/
+  spark/special_days_lakehouse_job.py   spark-submit: scrape → enrich → lakehouse
+notebooks/
+  special_days_lakehouse.ipynb          JupyterHub: same pipeline, interactive
+tests/             unittest suite (no network; Spark test skips without pyspark)
 Dockerfile · Makefile · requirements.txt
 ```
 

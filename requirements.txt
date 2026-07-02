@@ -2,3 +2,5 @@
 #   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 openpyxl>=3.1,<4
 certifi>=2024.0  # CA bundle so HTTPS works without system certs (macOS/Homebrew Python)
+# pyspark is NOT listed: the lakehouse sink (special_days/sinks/lakehouse.py) imports
+# it lazily and it is provided by the THY Spark cluster runtime, not pip-installed here.
