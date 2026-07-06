@@ -8,7 +8,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 
-USER_AGENT = "special-days-agent/0.1 (+https://github.com/polatbulut/special-days-agent)"
+USER_AGENT = "special-days-agent/0.1"
 
 # Use certifi's CA bundle so HTTPS works even when the Python install has no
 # system certificates configured (common with Homebrew Python on macOS).
