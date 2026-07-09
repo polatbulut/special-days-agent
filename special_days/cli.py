@@ -31,6 +31,9 @@ from .config import (
     get_azure_deployment,
     get_azure_endpoint,
     get_azure_max_completion_tokens,
+    get_obs_access_key,
+    get_obs_endpoint,
+    get_obs_secret_key,
     get_openai_key,
     get_vllm_api_key,
     get_vllm_base_url,
@@ -166,6 +169,23 @@ def build_parser() -> argparse.ArgumentParser:
         help="Cap the number of rows printed (after sorting by date).",
     )
     parser.add_argument(
+        "--obs",
+        action="store_true",
+        help=(
+            "Write the feed to Huawei OBS as Parquet (no Spark): a raw span object "
+            "and a day x airport feature object. Needs OBS_ENDPOINT + OBS_ACCESS_KEY "
+            "+ OBS_SECRET_KEY (env or .env)."
+        ),
+    )
+    parser.add_argument(
+        "--obs-location",
+        default=None,
+        help=(
+            "OBS target as obs://bucket/prefix (default: SPECIAL_DAYS_LOCATION env, "
+            "else obs://lakehouse-dev/special_events)."
+        ),
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Log collection progress and skipped sources to stderr.",
@@ -261,6 +281,21 @@ def main(argv: list[str] | None = None) -> int:
         print(f"error: {exc}", file=sys.stderr)
         return 2
 
+    # Fail fast on a misconfigured OBS sink, before any collection runs.
+    if args.obs:
+        missing = [
+            name
+            for name, value in (
+                ("OBS_ENDPOINT", get_obs_endpoint()),
+                ("OBS_ACCESS_KEY", get_obs_access_key()),
+                ("OBS_SECRET_KEY", get_obs_secret_key()),
+            )
+            if not value
+        ]
+        if missing:
+            print(f"error: --obs needs {', '.join(missing)} set (env or .env)", file=sys.stderr)
+            return 2
+
     start, end = resolve_window(args.start, args.months)
     logging.getLogger(__name__).info("Collecting window %s -> %s", start, end)
 
@@ -272,6 +307,20 @@ def main(argv: list[str] | None = None) -> int:
     rows = drop_long_events(rows, args.max_event_span_days)
     rows = enrich(rows, catchment_km=args.catchment_km, scorer=scorer, concurrency=concurrency)
     rows.sort(key=SpecialDate.sort_key)
+
+    # The OBS sink gets the full feed; --limit only caps terminal/file output.
+    if args.obs:
+        from .sinks import obs
+
+        location = args.obs_location or os.environ.get("SPECIAL_DAYS_LOCATION") or obs.DEFAULT_LOCATION
+        run_id = obs.write(
+            rows,
+            endpoint=get_obs_endpoint(),
+            access_key=get_obs_access_key(),
+            secret_key=get_obs_secret_key(),
+            location=location,
+        )
+        print(f"Wrote {len(rows)} special date(s) to OBS {location} (run_id={run_id})")
 
     if args.limit is not None:
         rows = rows[: args.limit]
