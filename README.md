@@ -120,18 +120,17 @@ The rolling window (`--months`) makes this a drop-in for any scheduler — wire
 the command up to run as often as you like (cron, CI, a task runner, …). No
 scheduler is bundled.
 
-### Lakehouse path (Spark → Parquet on OBS)
+### Output to OBS (`--obs`) — Parquet, no Spark
 
-For the forecasting feature store, the feed lands directly in the lakehouse as
-Parquet on **Huawei OBS**. The scraper runs **on the Spark cluster** (which has
-internet egress), enriches in Python, and writes two Parquet datasets —
-**path-only**, no Hive metastore (consumers read by path; register catalog tables
-later if wanted) — no Oracle hop, no S3 staging:
+For the forecasting feature store, `--obs` writes the feed straight to **Huawei
+OBS** as Parquet. It's a plain Python step — scrape → enrich → encode Parquet with
+`pyarrow` → upload the objects with the OBS SDK — so it runs anywhere with network
+access to OBS (a cluster terminal, a container, cron). **No Spark, no metastore.**
 
 ```
-scrape → enrich → Spark DataFrames → Parquet under obs://lakehouse-dev/special_events
-                                       ├─ .../special_days_raw      (span grain)
-                                       └─ .../special_days_features (day × airport)
+scrape → enrich → pyarrow → obs://lakehouse-dev/special_events
+                              ├─ .../special_days_raw/data.parquet       (span grain)
+                              └─ .../special_days_features/data.parquet   (day × airport)
 ```
 
 - **`special_days_raw`** — one row per special date (the audit / reprocess layer),
@@ -143,34 +142,26 @@ scrape → enrich → Spark DataFrames → Parquet under obs://lakehouse-dev/spe
   the biggest signal in the feed, so they are never dropped. Per cell:
   `impact` = max weight, `predicted_attendance` = sum, `sources` = distinct list,
   `n_events` = count.
-- Full **overwrite** each run (idempotent; trivial at this volume). A deterministic
-  `record_key` (SHA-1 of the natural business key) keeps the raw dataset one row per
-  special date across re-runs.
+- **Idempotent**: each dataset is a single object at a fixed key, overwritten each
+  run. A deterministic `record_key` (SHA-1 of the natural business key) keeps the
+  raw dataset one row per special date across re-runs.
 
-The sink is [`special_days/sinks/lakehouse.py`](special_days/sinks/lakehouse.py)
-(pure-Python row builders + a thin, lazily-imported Spark writer). Run it on the
-cluster after `git pull` two ways:
+The sink is [`special_days/sinks/obs.py`](special_days/sinks/obs.py) (pure-Python
+row builders + a lazily-imported pyarrow/OBS writer). Run it after `git pull`:
 
 ```bash
-# 1) spark-submit (batch / scheduled) — OBSA jar on the classpath if not cluster-provided
-spark-submit --jars /path/to/hadoop-huaweicloud.jar \
-    deploy/spark/special_days_lakehouse_job.py --months 12
-
-# 2) interactively in JupyterHub
-#    open notebooks/special_days_lakehouse.ipynb and run the cells
+pip install -r requirements.txt          # includes pyarrow + esdk-obs-python
+python -m special_days --obs --months 12
 ```
 
-Overrides (flag or env): `--location` / `SPECIAL_DAYS_LOCATION`
-(default `obs://lakehouse-dev/special_events`), `--months` / `SPECIAL_DAYS_MONTHS`.
-Scheduling is left to the platform (a notebook run now; Airflow / a cron
-`spark-submit` later) — the rolling window makes it a drop-in for any cadence.
+Consumers (`explf`, `expectedrevenue`) read the datasets **by path**, e.g.
+`obs://lakehouse-dev/special_events/special_days_features/`.
 
 **Storage & access (OBS).** Bucket `lakehouse-dev`, endpoint `bigdata-dev.obs`; a
 write-scoped service account can **read all of `lakehouse-dev` but write only under
-`/special_events`**. The job writes both datasets inside `--location`, so nothing
-lands outside the writable prefix. OBS credentials come from the environment (a
-git-ignored `.env`, **never committed**) and are applied to the Spark session by
-`lakehouse.configure_obs`:
+`/special_events`**. `--obs` writes both objects inside the location, so nothing
+lands outside the writable prefix. Credentials come from the environment (a
+git-ignored `.env`, **never committed**):
 
 ```
 OBS_ENDPOINT=bigdata-dev.obs
@@ -178,8 +169,9 @@ OBS_ACCESS_KEY=<AK>
 OBS_SECRET_KEY=<SK>
 ```
 
-Leave them unset if the cluster session already has OBS access. The OBSA connector
-(`hadoop-huaweicloud`) must be on the Spark classpath.
+The target defaults to `obs://lakehouse-dev/special_events`; override with
+`--obs-location obs://bucket/prefix` or `SPECIAL_DAYS_LOCATION`. The rolling window
+(`--months`) makes it a drop-in for any scheduler (cron, an OpenShift CronJob, …).
 
 ## CLI
 
@@ -199,6 +191,8 @@ python -m special_days [options]
 --llm-model           override the LLM model name (openai/vllm)
 --concurrency         parallel LLM scoring requests     (default: 8 llm / 1 heuristic)
 --limit               cap rows printed (after sorting by date)
+--obs                 also write the feed to OBS as Parquet (needs OBS_* env)
+--obs-location        OBS target obs://bucket/prefix (default: obs://lakehouse-dev/special_events)
 --verbose             log progress / skipped sources to stderr
 ```
 
@@ -362,13 +356,9 @@ special_days/
   output.py        table / csv / json renderers
   xlsx_writer.py   Excel (.xlsx) writer (openpyxl)
   sinks/
-    lakehouse.py   Spark lakehouse sink: raw span + day×airport feature tables
+    obs.py         OBS sink (--obs): raw span + day×airport Parquet objects
   cli.py           argument parsing + orchestration
-deploy/
-  spark/special_days_lakehouse_job.py   spark-submit: scrape → enrich → lakehouse
-notebooks/
-  special_days_lakehouse.ipynb          JupyterHub: same pipeline, interactive
-tests/             unittest suite (no network; Spark test skips without pyspark)
+tests/             unittest suite (no network; OBS Parquet tests skip without pyarrow)
 Dockerfile · Makefile · requirements.txt
 ```
 
