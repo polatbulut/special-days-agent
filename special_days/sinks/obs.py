@@ -1,29 +1,17 @@
 """Write the collected feed to Huawei OBS as Parquet — no Spark.
 
-A plain Python sink: build the rows in memory, encode them as Parquet with
-``pyarrow``, and upload the objects to OBS with the OBS SDK (``esdk-obs-python``).
-Runs anywhere with network access to OBS (a cluster terminal, a container, cron)::
+Builds the rows in memory, encodes them as Parquet with ``pyarrow``, and uploads
+two objects to OBS with the OBS SDK (``esdk-obs-python``); consumers read them by
+path. Runs anywhere with network access to OBS (a terminal, a container, cron)::
 
-    scrape -> enrich -> pyarrow Tables -> two Parquet objects on OBS
+    <location>/special_days_raw/data.parquet       span grain (one row per date)
+    <location>/special_days_features/data.parquet   day x airport feature grain
 
-Two objects are written under one OBS location (default
-``obs://lakehouse-dev/special_events``); consumers read them by path:
-
-``<location>/special_days_raw/data.parquet`` — **span grain**, one row per
-:class:`SpecialDate`, with the per-day impact curves kept as JSON strings.
-
-``<location>/special_days_features/data.parquet`` — **day x airport feature
-grain**. The statutory and bridge per-day curves are merged (per-day max) and
-exploded to one row per ``(event_date, country, airport)``. National holidays
-have no single airport, so they are kept with ``airport = NULL`` (country
-populated) rather than dropped — they are nationwide demand and the biggest
-signal in the feed.
-
-**Idempotent:** each dataset is a single object at a fixed key, overwritten on
-re-run. Credentials (endpoint + AK/SK for the write-scoped service account) come
-from the environment (see the ``OBS_*`` vars in ``.env.example``), never
-hardcoded. ``pyarrow`` and the OBS SDK are imported lazily, so importing this
-module (and running the pure-Python row builders) needs neither installed.
+National holidays have no single airport, so feature rows keep ``airport = NULL``
+(country populated) rather than being dropped. Each object is a single fixed key,
+overwritten each run (idempotent). Credentials come from the environment (the
+``OBS_*`` vars in ``.env.example``), never hardcoded; ``pyarrow`` and the OBS SDK
+are imported lazily, so the pure-Python row builders work without either.
 """
 
 from __future__ import annotations
@@ -265,9 +253,9 @@ def _parquet_bytes(rows: list[tuple], schema) -> bytes:
     import pyarrow.parquet as pq
 
     if rows:
-        columns = list(zip(*rows))                 # transpose rows -> columns
+        columns = list(zip(*rows))
     else:
-        columns = [() for _ in range(len(schema))]  # empty but correctly typed
+        columns = [() for _ in range(len(schema))]
     arrays = [pa.array(list(col), type=field.type) for col, field in zip(columns, schema)]
     table = pa.Table.from_arrays(arrays, schema=schema)
     buffer = io.BytesIO()
