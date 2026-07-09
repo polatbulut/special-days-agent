@@ -1,52 +1,50 @@
-"""Write the collected feed to the THY lakehouse as Parquet on Huawei OBS.
+"""Write the collected feed to Huawei OBS as Parquet — no Spark.
 
-The whole pipeline runs on the Spark nonprod cluster (it has internet egress)::
+A plain Python sink: build the rows in memory, encode them as Parquet with
+``pyarrow``, and upload the objects to OBS with the OBS SDK (``esdk-obs-python``).
+Runs anywhere with network access to OBS (a cluster terminal, a container, cron)::
 
-    scrape -> enrich -> build two Spark DataFrames -> two Parquet datasets on OBS
+    scrape -> enrich -> pyarrow Tables -> two Parquet objects on OBS
 
-Two Parquet datasets are written under one OBS location (default
-``obs://lakehouse-dev/special_events``) — **path-only**, no Hive metastore:
-consumers read them by path (register catalog tables later if wanted).
+Two objects are written under one OBS location (default
+``obs://lakehouse-dev/special_events``); consumers read them by path:
 
-``special_days_raw`` (``<location>/special_days_raw``) — **span grain**, one row
-per :class:`SpecialDate`, with the per-day impact curves kept as JSON strings.
-The audit / reprocess layer.
+``<location>/special_days_raw/data.parquet`` — **span grain**, one row per
+:class:`SpecialDate`, with the per-day impact curves kept as JSON strings.
 
-``special_days_features`` (``<location>/special_days_features``) — **day x airport
-feature grain**. The statutory and bridge per-day curves are merged (per-day max)
-and exploded to one row per ``(event_date, country, airport)``. National holidays
+``<location>/special_days_features/data.parquet`` — **day x airport feature
+grain**. The statutory and bridge per-day curves are merged (per-day max) and
+exploded to one row per ``(event_date, country, airport)``. National holidays
 have no single airport, so they are kept with ``airport = NULL`` (country
 populated) rather than dropped — they are nationwide demand and the biggest
 signal in the feed.
 
-OBS access (endpoint + AK/SK for the write-scoped service account) is applied to
-the Spark session by :func:`configure_obs` from environment values — never
-hardcoded. On a cluster that already injects OBS credentials into the session,
-that step is a no-op.
-
-Design: the pure-Python row builders (:func:`record_key`, :func:`to_raw_rows`,
-:func:`explode_features`) hold *all* the business logic and are unit-tested
-without Spark. ``pyspark`` is imported lazily inside :func:`build_schemas`, so
-importing this module on a laptop with no Spark installed is fine.
+**Idempotent:** each dataset is a single object at a fixed key, overwritten on
+re-run. Credentials (endpoint + AK/SK for the write-scoped service account) come
+from the environment (see the ``OBS_*`` vars in ``.env.example``), never
+hardcoded. ``pyarrow`` and the OBS SDK are imported lazily, so importing this
+module (and running the pure-Python row builders) needs neither installed.
 """
 
 from __future__ import annotations
 
 import hashlib
+import io
 import json
 import uuid
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
-from typing import Iterable
+from typing import Callable, Iterable
 
 from ..models import SpecialDate
 
 DEFAULT_LOCATION = "obs://lakehouse-dev/special_events"
 DEFAULT_RAW_TABLE = "special_days_raw"
 DEFAULT_FEATURE_TABLE = "special_days_features"
+DEFAULT_OBJECT_NAME = "data.parquet"
 
-# Column order shared by the row builders and the Spark schemas. The row tuples
-# are positional, so these orders must stay in lock-step with ``build_schemas``.
+# Column order shared by the row builders and the Parquet schemas. The row tuples
+# are positional, so these orders must stay in lock-step with ``_arrow_schemas``.
 RAW_COLUMNS = (
     "record_key", "event", "start_date", "end_date", "city", "category",
     "country", "source", "lat", "lon", "nearest_airport", "airport_distance_km",
@@ -96,7 +94,7 @@ def _dedup_by_key(records: Iterable[SpecialDate]) -> list[SpecialDate]:
     """Collapse to one record per :func:`record_key` (last wins, order preserved).
 
     Distinct ``SpecialDate`` rows can share a key when they differ only on
-    enrichment fields (outside the key basis). Deduping here keeps the raw table
+    enrichment fields (outside the key basis). Deduping here keeps the raw dataset
     one-row-per-key and stops the feature explosion from double-counting one
     special date's attendance into the same day x airport cell.
     """
@@ -109,8 +107,8 @@ def _dedup_by_key(records: Iterable[SpecialDate]) -> list[SpecialDate]:
 def to_raw_rows(records: Iterable[SpecialDate], run_id: str, load_ts: datetime) -> list[tuple]:
     """Span-grain rows (one tuple per special date), aligned to ``RAW_COLUMNS``.
 
-    Dates are passed as native ``datetime.date`` objects (Spark maps them to
-    DateType); the per-day curves become JSON strings; ``None`` stays NULL.
+    Dates are native ``datetime.date`` objects; the per-day curves become JSON
+    strings; ``None`` stays NULL.
     """
     rows: list[tuple] = []
     for r in _dedup_by_key(records):
@@ -147,7 +145,7 @@ def _effective_curve(record: SpecialDate) -> dict[str, int]:
     bridge day while never under-stating a statutory day (whose weight can differ
     because the Linear-V is computed over a different span length). If a record
     has no curves (un-enriched input), fall back to a flat ``impact_score`` over
-    ``[start_date, end_date]`` so the record still appears in the feature table.
+    ``[start_date, end_date]`` so the record still appears in the feature dataset.
     """
     merged: dict[str, int] = {}
     for curve in (record.impact_by_day, record.impact_by_day_bridge):
@@ -210,119 +208,136 @@ def explode_features(records: Iterable[SpecialDate], run_id: str, load_ts: datet
     return rows
 
 
-def build_schemas():
-    """Return ``(raw_schema, feature_schema)`` as Spark ``StructType``s.
+def parse_obs_uri(uri: str) -> tuple[str, str]:
+    """Split ``obs://bucket/prefix/...`` into ``(bucket, prefix)`` (prefix may be '')."""
+    rest = uri.partition("://")[2] if "://" in uri else uri
+    rest = rest.strip("/")
+    bucket, _, prefix = rest.partition("/")
+    return bucket, prefix
 
-    Imported lazily so the module loads without pyspark. Field order matches
-    ``RAW_COLUMNS`` / ``FEATURE_COLUMNS`` and the positional row tuples.
+
+def _arrow_schemas():
+    """Return ``(raw_schema, feature_schema)`` as pyarrow schemas (lazy import).
+
+    Field order matches ``RAW_COLUMNS`` / ``FEATURE_COLUMNS`` and the row tuples.
     """
-    from pyspark.sql import types as T
+    import pyarrow as pa
 
-    raw = T.StructType([
-        T.StructField("record_key", T.StringType(), False),
-        T.StructField("event", T.StringType(), False),
-        T.StructField("start_date", T.DateType(), False),
-        T.StructField("end_date", T.DateType(), False),
-        T.StructField("city", T.StringType(), True),
-        T.StructField("category", T.StringType(), True),
-        T.StructField("country", T.StringType(), True),
-        T.StructField("source", T.StringType(), True),
-        T.StructField("lat", T.DoubleType(), True),
-        T.StructField("lon", T.DoubleType(), True),
-        T.StructField("nearest_airport", T.StringType(), True),
-        T.StructField("airport_distance_km", T.DoubleType(), True),
-        T.StructField("impact_score", T.IntegerType(), True),
-        T.StructField("predicted_attendance", T.LongType(), True),
-        T.StructField("bridge_start", T.DateType(), True),
-        T.StructField("bridge_end", T.DateType(), True),
-        T.StructField("impact_by_day", T.StringType(), True),
-        T.StructField("impact_by_day_bridge", T.StringType(), True),
-        T.StructField("run_id", T.StringType(), True),
-        T.StructField("load_ts", T.TimestampType(), True),
+    raw = pa.schema([
+        ("record_key", pa.string()),
+        ("event", pa.string()),
+        ("start_date", pa.date32()),
+        ("end_date", pa.date32()),
+        ("city", pa.string()),
+        ("category", pa.string()),
+        ("country", pa.string()),
+        ("source", pa.string()),
+        ("lat", pa.float64()),
+        ("lon", pa.float64()),
+        ("nearest_airport", pa.string()),
+        ("airport_distance_km", pa.float64()),
+        ("impact_score", pa.int32()),
+        ("predicted_attendance", pa.int64()),
+        ("bridge_start", pa.date32()),
+        ("bridge_end", pa.date32()),
+        ("impact_by_day", pa.string()),
+        ("impact_by_day_bridge", pa.string()),
+        ("run_id", pa.string()),
+        ("load_ts", pa.timestamp("us", tz="UTC")),
     ])
-    feature = T.StructType([
-        T.StructField("event_date", T.DateType(), False),
-        T.StructField("country", T.StringType(), True),
-        T.StructField("airport", T.StringType(), True),
-        T.StructField("impact", T.IntegerType(), True),
-        T.StructField("predicted_attendance", T.LongType(), True),
-        T.StructField("sources", T.StringType(), True),
-        T.StructField("n_events", T.IntegerType(), True),
-        T.StructField("feature_timestamp", T.TimestampType(), True),
-        T.StructField("run_id", T.StringType(), True),
+    feature = pa.schema([
+        ("event_date", pa.date32()),
+        ("country", pa.string()),
+        ("airport", pa.string()),
+        ("impact", pa.int32()),
+        ("predicted_attendance", pa.int64()),
+        ("sources", pa.string()),
+        ("n_events", pa.int32()),
+        ("feature_timestamp", pa.timestamp("us", tz="UTC")),
+        ("run_id", pa.string()),
     ])
     return raw, feature
 
 
-def configure_obs(spark, *, endpoint=None, access_key=None, secret_key=None) -> bool:
-    """Point the Spark session's Hadoop config at Huawei OBS (``obs://`` scheme).
+def _parquet_bytes(rows: list[tuple], schema) -> bytes:
+    """Encode positional ``rows`` as a Parquet file (bytes) matching ``schema``."""
+    import pyarrow as pa
+    import pyarrow.parquet as pq
 
-    Sets the OBSA filesystem impl + endpoint + AK/SK on the live session's Hadoop
-    configuration so ``df.write.parquet('obs://...')`` authenticates. Returns
-    ``True`` if it applied credentials, ``False`` if it did nothing.
-
-    **No-op unless all three of** ``endpoint``/``access_key``/``secret_key`` are
-    provided — on a cluster that already injects OBS credentials into the session,
-    leave them unset and this is skipped. Credentials come from the environment
-    (see the ``OBS_*`` vars in ``.env.example``), never hardcoded. The OBSA
-    connector jar (``hadoop-huaweicloud``) must be on the Spark classpath.
-    """
-    if not (endpoint and access_key and secret_key):
-        return False
-    hconf = spark.sparkContext._jsc.hadoopConfiguration()
-    hconf.set("fs.obs.impl", "org.apache.hadoop.fs.obs.OBSFileSystem")
-    hconf.set("fs.AbstractFileSystem.obs.impl", "org.apache.hadoop.fs.obs.OBS")
-    hconf.set("fs.obs.endpoint", endpoint)
-    hconf.set("fs.obs.access.key", access_key)
-    hconf.set("fs.obs.secret.key", secret_key)
-    return True
+    if rows:
+        columns = list(zip(*rows))                 # transpose rows -> columns
+    else:
+        columns = [() for _ in range(len(schema))]  # empty but correctly typed
+    arrays = [pa.array(list(col), type=field.type) for col, field in zip(columns, schema)]
+    table = pa.Table.from_arrays(arrays, schema=schema)
+    buffer = io.BytesIO()
+    pq.write_table(table, buffer)
+    return buffer.getvalue()
 
 
-def _save(df, location: str, table: str, mode: str) -> None:
-    """Write ``df`` as Parquet objects under ``location/table`` (path-only).
+def _object_key(prefix: str, table: str, object_name: str) -> str:
+    """Join a non-empty ``prefix``, ``table`` and ``object_name`` into an OBS key."""
+    return "/".join(part for part in (prefix, table, object_name) if part)
 
-    No Hive metastore: consumers read by path (``obs://.../<table>``).
-    ``coalesce(1)`` keeps the tiny feed to a single Parquet object.
-    """
-    (
-        df.coalesce(1)
-        .write.mode(mode)
-        .parquet(f"{location.rstrip('/')}/{table}")
-    )
+
+def _obs_client(endpoint: str, access_key: str, secret_key: str):
+    """Construct an OBS SDK client; prepend ``https://`` if the endpoint has no scheme."""
+    from obs import ObsClient  # lazy: only needed when actually uploading
+
+    server = endpoint if "://" in endpoint else f"https://{endpoint}"
+    return ObsClient(access_key_id=access_key, secret_access_key=secret_key, server=server)
+
+
+def _put(client, bucket: str, key: str, content: bytes) -> None:
+    """Upload ``content`` to ``bucket/key`` and raise on a non-2xx OBS response."""
+    resp = client.putContent(bucket, key, content=content)
+    status = getattr(resp, "status", None)
+    if status is not None and status >= 300:
+        raise RuntimeError(
+            f"OBS putContent failed for {bucket}/{key}: status={status} "
+            f"code={getattr(resp, 'errorCode', None)} message={getattr(resp, 'errorMessage', None)}"
+        )
 
 
 def write(
     records: Iterable[SpecialDate],
     *,
-    spark,
+    endpoint: str,
+    access_key: str,
+    secret_key: str,
     location: str = DEFAULT_LOCATION,
     raw_table: str = DEFAULT_RAW_TABLE,
     feature_table: str = DEFAULT_FEATURE_TABLE,
-    mode: str = "overwrite",
+    object_name: str = DEFAULT_OBJECT_NAME,
     run_id: str | None = None,
     load_ts: datetime | None = None,
+    client: object | None = None,
 ) -> str:
-    """Write both Parquet datasets under ``location`` (path-only); return run id.
+    """Encode the two datasets as Parquet and upload them to OBS; return the run id.
 
-    ``spark`` is an active ``SparkSession`` (call :func:`configure_obs` first if
-    the session needs OBS credentials). ``run_id`` / ``load_ts`` default to a
-    fresh UUID and the current UTC time and are stamped on every row for
-    point-in-time freshness. ``mode='overwrite'`` does a full daily refresh —
-    idempotent and trivial at this volume. Both datasets land under ``location``
-    (``<location>/special_days_raw`` and ``<location>/special_days_features``),
-    which for the dev account must be inside the writable ``special_events``
-    prefix.
+    ``location`` is an ``obs://bucket/prefix`` URI. Each dataset is a single object
+    at a fixed key (``<prefix>/<table>/<object_name>``), overwritten on re-run so
+    the write is idempotent. ``run_id`` / ``load_ts`` default to a fresh UUID and
+    the current UTC time and are stamped on every row for point-in-time freshness.
+    ``client`` (an object exposing ``putContent`` / ``close``) is injectable so
+    tests run without the OBS SDK or a live bucket.
     """
     records = list(records)
     run_id = run_id or uuid.uuid4().hex
     load_ts = load_ts or datetime.now(timezone.utc)
+    bucket, prefix = parse_obs_uri(location)
 
-    raw_schema, feature_schema = build_schemas()
-    raw_df = spark.createDataFrame(to_raw_rows(records, run_id, load_ts), schema=raw_schema)
-    feature_df = spark.createDataFrame(
-        explode_features(records, run_id, load_ts), schema=feature_schema
-    )
+    raw_schema, feature_schema = _arrow_schemas()
+    raw_bytes = _parquet_bytes(to_raw_rows(records, run_id, load_ts), raw_schema)
+    feature_bytes = _parquet_bytes(explode_features(records, run_id, load_ts), feature_schema)
 
-    _save(raw_df, location, raw_table, mode)
-    _save(feature_df, location, feature_table, mode)
+    owns_client = client is None
+    if owns_client:
+        client = _obs_client(endpoint, access_key, secret_key)
+    try:
+        _put(client, bucket, _object_key(prefix, raw_table, object_name), raw_bytes)
+        _put(client, bucket, _object_key(prefix, feature_table, object_name), feature_bytes)
+    finally:
+        if owns_client:
+            client.close()
     return run_id
