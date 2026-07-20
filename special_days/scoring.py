@@ -30,6 +30,7 @@ _CATEGORY_WEIGHT = {
     "sports": 60,
     "concert": 55,
     "expo": 50,
+    "seminar": 50,
     "arts": 45,
     "film": 40,
     "event": 50,
@@ -198,6 +199,25 @@ def _prompt_eventseye(record: SpecialDate) -> str:
     ) + _JSON_ATTENDANCE_IMPACT
 
 
+def _prompt_seminars(record: SpecialDate) -> str:
+    payload = json.dumps(record.raw or {}, ensure_ascii=False)
+    return (
+        f"{_THY}\n{_IMPACT_RUBRIC}\n\n"
+        f"Below is a BUSINESS CONFERENCE / SEMINAR listing ({record.event}; "
+        f"{record.city}, {record.country}). Professional conferences pull delegates, "
+        f"speakers and academics who fly in and book ahead, with a business-cabin "
+        f"skew — but attendances are MODEST (typically tens to a few hundred, not a "
+        f"stadium). The listing carries NO attendance figure, so:\n"
+        f"1. attendance: estimate total expected attendance from the topic and city, "
+        f"keeping conferences small, as an integer.\n"
+        f"2. impact: per the rubric — of those delegates, how many would realistically "
+        f"BUY A TURKISH AIRLINES TICKET. A conference IN Türkiye drawing international "
+        f"delegates through IST scores higher; one abroad scores by its Türkiye-origin "
+        f"/ diaspora and THY-network pull, and low if delegates are mostly local.\n"
+        f"Conference listing (JSON):\n{payload}\n"
+    ) + _JSON_ATTENDANCE_IMPACT
+
+
 _PROMPT_BUILDERS = {
     "nager": _prompt_nager,
     "diyanet": _prompt_diyanet,
@@ -205,11 +225,12 @@ _PROMPT_BUILDERS = {
     "ticketmaster": _prompt_ticketmaster,
     "football": _prompt_football,
     "eventseye": _prompt_eventseye,
+    "seminars": _prompt_seminars,
 }
 
 # Sources whose records are *events* and so carry a predicted attendance.
 # Holiday sources (nager/diyanet/meb) never do — attendance is forced to None.
-_EVENT_SOURCES = {"ticketmaster", "football", "eventseye"}
+_EVENT_SOURCES = {"ticketmaster", "football", "eventseye", "seminars"}
 
 
 def _clamp_impact(value) -> int | None:

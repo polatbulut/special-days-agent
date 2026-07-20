@@ -9,6 +9,7 @@ from pathlib import Path
 TICKETMASTER_API_KEY_ENV = "TICKETMASTER_API_KEY"
 FOOTBALL_API_KEY_ENV = "FOOTBALL_API_KEY"
 EVENTSEYE_ENABLED_ENV = "EVENTSEYE_ENABLED"
+SEMINARS_ENABLED_ENV = "SEMINARS_ENABLED"
 OPENAI_API_KEY_ENV = "OPENAI_API_KEY"
 VLLM_BASE_URL_ENV = "VLLM_BASE_URL"
 VLLM_API_KEY_ENV = "VLLM_API_KEY"
@@ -77,6 +78,16 @@ def eventseye_enabled() -> bool:
     and the directory is only hit when an operator asks for it.
     """
     value = (os.environ.get(EVENTSEYE_ENABLED_ENV, "") or "").strip().lower()
+    return value in _TRUTHY
+
+
+def seminars_enabled() -> bool:
+    """True if ConferenceIndex seminar scraping is enabled (``SEMINARS_ENABLED`` truthy).
+
+    Opt-in (off by default), like EventsEye, so default runs stay API-only and the
+    directory is only hit when an operator asks for it.
+    """
+    value = (os.environ.get(SEMINARS_ENABLED_ENV, "") or "").strip().lower()
     return value in _TRUTHY
 
 

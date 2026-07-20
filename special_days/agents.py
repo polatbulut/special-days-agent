@@ -17,9 +17,10 @@ from .config import (
     eventseye_enabled,
     get_football_api_key,
     get_ticketmaster_key,
+    seminars_enabled,
 )
 from .models import SpecialDate
-from .sources import diyanet, eventseye, football, meb, nager, ticketmaster
+from .sources import diyanet, eventseye, football, meb, nager, seminars, ticketmaster
 
 logger = logging.getLogger(__name__)
 
@@ -34,12 +35,14 @@ class Agent:
         ticketmaster_key: str | None = None,
         football_key: str | None = None,
         eventseye: bool = False,
+        seminars: bool = False,
     ):
         self.name = name
         self.countries = [c.upper() for c in countries]
         self.ticketmaster_key = ticketmaster_key
         self.football_key = football_key
         self.eventseye_enabled = eventseye
+        self.seminars_enabled = seminars
 
     def collect(
         self,
@@ -100,6 +103,13 @@ class Agent:
             except Exception as exc:  # noqa: BLE001 - resilient collection
                 logger.warning("[%s] eventseye failed for %s: %s", self.name, country, exc)
 
+        # Seminars — free ConferenceIndex business-conference scrape, opt-in via SEMINARS_ENABLED.
+        if self.seminars_enabled:
+            try:
+                results.extend(seminars.fetch_events_in_window(country, start, end))
+            except Exception as exc:  # noqa: BLE001 - resilient collection
+                logger.warning("[%s] seminars failed for %s: %s", self.name, country, exc)
+
     def _football_leagues(self) -> list[int]:
         """API-Football league ids this agent pulls — top league per country."""
         leagues: list[int] = []
@@ -134,6 +144,7 @@ class TurkeyAgent(Agent):
         ticketmaster_key: str | None = None,
         football_key: str | None = None,
         eventseye: bool | None = None,
+        seminars: bool | None = None,
     ):
         super().__init__(
             name="turkey",
@@ -141,6 +152,7 @@ class TurkeyAgent(Agent):
             ticketmaster_key=ticketmaster_key if ticketmaster_key is not None else get_ticketmaster_key(),
             football_key=football_key if football_key is not None else get_football_api_key(),
             eventseye=eventseye if eventseye is not None else eventseye_enabled(),
+            seminars=seminars if seminars is not None else seminars_enabled(),
         )
 
     def _football_leagues(self):
@@ -166,6 +178,7 @@ class InternationalAgent(Agent):
         ticketmaster_key: str | None = None,
         football_key: str | None = None,
         eventseye: bool | None = None,
+        seminars: bool | None = None,
     ):
         super().__init__(
             name="international",
@@ -173,6 +186,7 @@ class InternationalAgent(Agent):
             ticketmaster_key=ticketmaster_key if ticketmaster_key is not None else get_ticketmaster_key(),
             football_key=football_key if football_key is not None else get_football_api_key(),
             eventseye=eventseye if eventseye is not None else eventseye_enabled(),
+            seminars=seminars if seminars is not None else seminars_enabled(),
         )
 
     def _football_leagues(self):

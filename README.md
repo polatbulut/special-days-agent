@@ -36,6 +36,7 @@ catchment radius) and a transparent **0-100 impact score**.
 | [Ticketmaster Discovery](https://developer.ticketmaster.com/) | Events (concerts/sports/arts)   | Free, optional  |
 | [API-Football (API-Sports)](https://www.api-football.com/)    | Football fixtures (Süper Lig, UEFA, top leagues; incl. historical) | Free, optional  |
 | [EventsEye](https://www.eventseye.com/) (scrape)              | Corporate/B2B trade fairs & expos (free directory, facts only) | None, opt-in |
+| [ConferenceIndex](https://conferenceindex.org/) (scrape)     | Business seminars / conferences (management, economics, finance) | None, opt-in |
 
 Diyanet and MEB dates have no clean API, so they are bundled as curated
 **official** dates (`special_days/data/`) and refreshed yearly. Football fixtures
@@ -92,14 +93,18 @@ python -m special_days --agent turkey --source events
 
 # Corporate/B2B: free EventsEye trade-fair scrape (opt-in, no key)
 EVENTSEYE_ENABLED=1 python -m special_days --agent turkey --source events
+
+# Business seminars: free ConferenceIndex conference scrape (opt-in, no key)
+SEMINARS_ENABLED=1 python -m special_days --agent turkey --source events
 ```
 
 Each event source is independent and gated on its own credential: set
 `TICKETMASTER_API_KEY` for concerts/sports/arts, `FOOTBALL_API_KEY` for league
-and cup football fixtures, and `EVENTSEYE_ENABLED=1` to turn on the free EventsEye
-corporate/B2B trade-fair scrape. Any source whose credential is missing (or the
-EventsEye flag left off) is skipped cleanly, so you still get holidays (and
-whichever event source you did configure).
+and cup football fixtures, `EVENTSEYE_ENABLED=1` for the free EventsEye
+corporate/B2B trade-fair scrape, and `SEMINARS_ENABLED=1` for the free
+ConferenceIndex business-seminar / conference scrape. Any source whose credential
+is missing (or a scrape flag left off) is skipped cleanly, so you still get
+holidays (and whichever event source you did configure).
 
 ## Excel output (`.xlsx`)
 
@@ -235,7 +240,7 @@ Or via the Makefile: `make docker-run ARGS="--agent both --format xlsx -o out/sp
 
 Every source maps into one `SpecialDate` (see [`special_days/models.py`](special_days/models.py)).
 Output columns: Event, Start date, End date, City, Source (nager/diyanet/meb/
-ticketmaster/football/eventseye), Nearest airport, Impact, Predicted attendance,
+ticketmaster/football/eventseye/seminars), Nearest airport, Impact, Predicted attendance,
 Bridge start, Bridge end — plus two per-day weight lists (csv/xlsx/json).
 
 **Bridge ranges (köprü).** For Turkish holidays, `bridge_start`/`bridge_end`
