@@ -24,5 +24,18 @@ env/
 *.doc
 out/
 
+# Media / archives (demos, not source — keep them out of the repo)
+*.mp4
+*.mov
+*.webm
+*.avi
+*.mkv
+*.zip
+*.tar
+*.tar.gz
+*.tgz
+*.7z
+*.rar
+
 # OS
 .DS_Store
