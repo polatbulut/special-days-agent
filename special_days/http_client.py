@@ -7,17 +7,43 @@ import ssl
 import urllib.error
 import urllib.parse
 import urllib.request
+from functools import lru_cache
 
 USER_AGENT = "special-days-agent/0.1"
 
-# Use certifi's CA bundle so HTTPS works even when the Python install has no
-# system certificates configured (common with Homebrew Python on macOS).
 try:
     import certifi
+except Exception:  # pragma: no cover - optional dependency
+    certifi = None
 
-    _SSL_CONTEXT: ssl.SSLContext | None = ssl.create_default_context(cafile=certifi.where())
-except Exception:  # certifi missing -> fall back to the system default
-    _SSL_CONTEXT = None
+
+@lru_cache(maxsize=1)
+def _build_ssl_context() -> ssl.SSLContext | None:
+    """Build an HTTPS context that keeps system trust and layers certifi on top.
+
+    The previous implementation replaced the default trust store with certifi,
+    which breaks corporate / proxy-issued certificates that are trusted by the
+    host OS (or injected via ``SSL_CERT_FILE`` / ``SSL_CERT_DIR``) but not by
+    certifi. Start from the platform default context, then add certifi's bundle
+    as an extra source when available.
+    """
+    try:
+        context = ssl.create_default_context()
+    except Exception:
+        return None
+
+    try:
+        if certifi is None:
+            return context
+        cafile = certifi.where()
+    except Exception:
+        return context
+
+    try:
+        context.load_verify_locations(cafile=cafile)
+    except Exception:
+        pass
+    return context
 
 
 class HttpError(Exception):
@@ -47,7 +73,7 @@ def _get_bytes(
         request_headers.update(headers)
     request = urllib.request.Request(url, headers=request_headers)
     try:
-        with urllib.request.urlopen(request, timeout=timeout, context=_SSL_CONTEXT) as response:
+        with urllib.request.urlopen(request, timeout=timeout, context=_build_ssl_context()) as response:
             return response.read()
     except urllib.error.HTTPError as exc:
         raise HttpError(f"HTTP {exc.code} for {url}: {exc.reason}") from exc
@@ -115,7 +141,7 @@ def post_json(url: str, payload: dict, headers: dict | None = None, timeout: flo
 
     request = urllib.request.Request(url, data=body, headers=request_headers, method="POST")
     try:
-        with urllib.request.urlopen(request, timeout=timeout, context=_SSL_CONTEXT) as response:
+        with urllib.request.urlopen(request, timeout=timeout, context=_build_ssl_context()) as response:
             data = response.read()
     except urllib.error.HTTPError as exc:
         detail = exc.read().decode("utf-8", "replace")[:500] if hasattr(exc, "read") else ""

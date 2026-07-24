@@ -174,6 +174,12 @@ OBS_ACCESS_KEY=<AK>
 OBS_SECRET_KEY=<SK>
 ```
 
+If OBS returns `SignatureDoesNotMatch`, check the basics first: the endpoint must
+match the target OBS service/region, and copied credentials must not contain
+hidden whitespace or trailing newlines. The CLI now strips surrounding whitespace
+from `OBS_SECRET_KEY`, but the actual AK/SK values still need to be the correct
+write-scoped pair for `lakehouse-dev/special_events`.
+
 The target defaults to `obs://lakehouse-dev/special_events`; override with
 `--obs-location obs://bucket/prefix` or `SPECIAL_DAYS_LOCATION`. The rolling window
 (`--months`) makes it a drop-in for any scheduler (cron, an OpenShift CronJob, …).
@@ -295,6 +301,12 @@ estimate attendance from the event facts (EventsEye carries no headcount).
   `max_completion_tokens` (default 16384, override with
   `AZURE_OPENAI_MAX_COMPLETION_TOKENS`) is sent so reasoning models don't return
   empty content.
+
+If you run this on a corporate or external workbench that injects its own TLS
+certificate chain, keep that CA in the host trust store or export
+`SSL_CERT_FILE` / `SSL_CERT_DIR` before running the Azure scorer. The shared HTTP
+client keeps system trust and adds `certifi`, so proxy-issued certificates work
+as long as the host or those env vars trust them.
 
 > Predicted attendance is populated only by an LLM scorer (the heuristic leaves
 > it blank). Event prompts send the full payload, so input-token cost rises with

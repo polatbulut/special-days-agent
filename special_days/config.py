@@ -158,5 +158,10 @@ def get_obs_access_key() -> str | None:
 
 
 def get_obs_secret_key() -> str | None:
-    """Return the OBS secret key (SK), or ``None`` (not stripped: secrets are literal)."""
-    return os.environ.get(OBS_SECRET_KEY_ENV) or None
+    """Return the OBS secret key (SK), or ``None``.
+
+    Surrounding whitespace is stripped because AK/SK values are often injected
+    from copied secrets or mounted env files, and a trailing newline causes OBS
+    request signing to fail with ``SignatureDoesNotMatch``.
+    """
+    return _env(OBS_SECRET_KEY_ENV)

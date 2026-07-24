@@ -80,6 +80,26 @@ class FootballKeyTest(unittest.TestCase):
         self.assertIsNone(config.get_football_api_key())
 
 
+class ObsSecretKeyTest(unittest.TestCase):
+    def setUp(self):
+        self._saved = os.environ.get(config.OBS_SECRET_KEY_ENV)
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        if self._saved is None:
+            os.environ.pop(config.OBS_SECRET_KEY_ENV, None)
+        else:
+            os.environ[config.OBS_SECRET_KEY_ENV] = self._saved
+
+    def test_returns_stripped_secret_when_set(self):
+        os.environ[config.OBS_SECRET_KEY_ENV] = "  secret123\n"
+        self.assertEqual(config.get_obs_secret_key(), "secret123")
+
+    def test_returns_none_when_unset(self):
+        os.environ.pop(config.OBS_SECRET_KEY_ENV, None)
+        self.assertIsNone(config.get_obs_secret_key())
+
+
 class EventseyeEnabledTest(unittest.TestCase):
     def setUp(self):
         self._saved = os.environ.get(config.EVENTSEYE_ENABLED_ENV)

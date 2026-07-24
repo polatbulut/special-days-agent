@@ -281,9 +281,16 @@ def _put(client, bucket: str, key: str, content: bytes) -> None:
     resp = client.putContent(bucket, key, content=content)
     status = getattr(resp, "status", None)
     if status is not None and status >= 300:
+        hint = ""
+        if getattr(resp, "errorCode", None) == "SignatureDoesNotMatch":
+            hint = (
+                " Hint: verify OBS_ENDPOINT points at the correct OBS service/region "
+                "and that OBS_ACCESS_KEY / OBS_SECRET_KEY do not contain surrounding whitespace."
+            )
         raise RuntimeError(
             f"OBS putContent failed for {bucket}/{key}: status={status} "
             f"code={getattr(resp, 'errorCode', None)} message={getattr(resp, 'errorMessage', None)}"
+            f"{hint}"
         )
 
 

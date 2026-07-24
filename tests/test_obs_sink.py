@@ -183,6 +183,13 @@ class _FakeResp:
     errorMessage = None
 
 
+class _ErrorResp:
+    def __init__(self, status, error_code, error_message):
+        self.status = status
+        self.errorCode = error_code
+        self.errorMessage = error_message
+
+
 class _FakeObsClient:
     def __init__(self):
         self.puts = {}
@@ -194,6 +201,19 @@ class _FakeObsClient:
 
     def close(self):
         self.closed = True
+
+
+class PutErrorTest(unittest.TestCase):
+    def test_signature_mismatch_error_includes_hint(self):
+        client = unittest.mock.Mock()
+        client.putContent.return_value = _ErrorResp(403, "SignatureDoesNotMatch", "bad signature")
+
+        with self.assertRaises(RuntimeError) as exc:
+            obs._put(client, "lakehouse-dev", "special_events/data.parquet", b"x")
+
+        message = str(exc.exception)
+        self.assertIn("SignatureDoesNotMatch", message)
+        self.assertIn("OBS_ACCESS_KEY / OBS_SECRET_KEY", message)
 
 
 @unittest.skipUnless(_HAS_PYARROW, "pyarrow not installed")
