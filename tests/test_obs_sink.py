@@ -227,14 +227,17 @@ class ObsClientConfigTest(unittest.TestCase):
         raw_client = mock.Mock()
         ctor = mock.Mock(return_value=raw_client)
         with mock.patch.dict(sys.modules, {"boto3": types.SimpleNamespace(client=ctor)}):
-            out = obs._obs_client("bigdata-dev.obs", "ak", "sk")
+            with mock.patch("botocore.config.Config", side_effect=lambda **kw: kw) as boto_cfg:
+                out = obs._obs_client("bigdata-dev.obs", "ak", "sk")
         self.assertIsInstance(out, obs._S3CompatClient)
+        boto_cfg.assert_called_once_with(s3={"addressing_style": "path"})
         ctor.assert_called_once_with(
             "s3",
             endpoint_url="https://bigdata-dev.obs",
             aws_access_key_id="ak",
             aws_secret_access_key="sk",
             verify=False,
+            config={"s3": {"addressing_style": "path"}},
         )
         out.putContent("lakehouse-dev", "special_events/data.parquet", b"x")
         raw_client.put_object.assert_called_once_with(
@@ -258,13 +261,31 @@ class ObsClientConfigTest(unittest.TestCase):
     def test_internal_endpoint_respects_verify_override(self):
         ctor = mock.Mock(return_value=mock.Mock())
         with mock.patch.dict(sys.modules, {"boto3": types.SimpleNamespace(client=ctor)}):
-            obs._obs_client("files.example.com", "ak", "sk", verify_ssl=True)
+            with mock.patch("botocore.config.Config", side_effect=lambda **kw: kw) as boto_cfg:
+                obs._obs_client("files.example.com", "ak", "sk", verify_ssl=True)
+        boto_cfg.assert_called_once_with(s3={"addressing_style": "path"})
         ctor.assert_called_once_with(
             "s3",
             endpoint_url="https://files.example.com",
             aws_access_key_id="ak",
             aws_secret_access_key="sk",
             verify=True,
+            config={"s3": {"addressing_style": "path"}},
+        )
+
+    def test_internal_endpoint_can_force_virtual_host(self):
+        ctor = mock.Mock(return_value=mock.Mock())
+        with mock.patch.dict(sys.modules, {"boto3": types.SimpleNamespace(client=ctor)}):
+            with mock.patch("botocore.config.Config", side_effect=lambda **kw: kw) as boto_cfg:
+                obs._obs_client("files.example.com", "ak", "sk", path_style=False)
+        boto_cfg.assert_called_once_with(s3={"addressing_style": "virtual"})
+        ctor.assert_called_once_with(
+            "s3",
+            endpoint_url="https://files.example.com",
+            aws_access_key_id="ak",
+            aws_secret_access_key="sk",
+            verify=False,
+            config={"s3": {"addressing_style": "virtual"}},
         )
 
 

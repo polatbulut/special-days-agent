@@ -327,13 +327,24 @@ def _obs_client(
     if not _is_official_obs_endpoint(server):
         try:
             import boto3  # lazy: only needed when actually uploading
+            from botocore.config import Config as BotoConfig
         except Exception as exc:  # pragma: no cover - depends on runtime env
             raise RuntimeError(
                 "boto3 is required for non-official OBS/S3 endpoints; install requirements.txt"
             ) from exc
 
+        if is_cname:
+            path_style = False
+        elif path_style is None:
+            path_style = _default_path_style(server, is_cname=is_cname)
+
         verify = False if verify_ssl is None else verify_ssl
-        logger.info("Storage client server=%s backend=s3-compatible verify_ssl=%s", server, verify)
+        logger.info(
+            "Storage client server=%s backend=s3-compatible verify_ssl=%s addressing=%s",
+            server,
+            verify,
+            "path-style" if path_style else "virtual-host",
+        )
         return _S3CompatClient(
             boto3.client(
                 "s3",
@@ -341,6 +352,7 @@ def _obs_client(
                 aws_access_key_id=access_key,
                 aws_secret_access_key=secret_key,
                 verify=verify,
+                config=BotoConfig(s3={"addressing_style": "path" if path_style else "virtual"}),
             )
         )
 
