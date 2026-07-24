@@ -31,6 +31,7 @@ from .config import (
     get_azure_deployment,
     get_azure_endpoint,
     get_azure_max_completion_tokens,
+    get_azure_timeout_seconds,
     get_obs_access_key,
     get_obs_endpoint,
     get_obs_secret_key,
@@ -275,6 +276,7 @@ def main(argv: list[str] | None = None) -> int:
             azure_api_key=get_azure_api_key(),
             azure_api_version=get_azure_api_version(),
             azure_max_completion_tokens=get_azure_max_completion_tokens(),
+            azure_timeout=get_azure_timeout_seconds(),
             model=model,
         )
     except ValueError as exc:

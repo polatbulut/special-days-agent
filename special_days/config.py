@@ -19,6 +19,7 @@ AZURE_OPENAI_API_KEY_ENV = "AZURE_OPENAI_API_KEY"
 AZURE_OPENAI_DEPLOYMENT_ENV = "AZURE_OPENAI_DEPLOYMENT"
 AZURE_OPENAI_API_VERSION_ENV = "AZURE_OPENAI_API_VERSION"
 AZURE_OPENAI_MAX_COMPLETION_TOKENS_ENV = "AZURE_OPENAI_MAX_COMPLETION_TOKENS"
+AZURE_OPENAI_TIMEOUT_SECONDS_ENV = "AZURE_OPENAI_TIMEOUT_SECONDS"
 # OBS (Huawei object storage) — where the --obs sink writes the Parquet output.
 OBS_ENDPOINT_ENV = "OBS_ENDPOINT"
 OBS_ACCESS_KEY_ENV = "OBS_ACCESS_KEY"
@@ -145,6 +146,18 @@ def get_azure_max_completion_tokens() -> int | None:
         return int(raw)
     except ValueError:
         return None
+
+
+def get_azure_timeout_seconds() -> float | None:
+    """Return the Azure request-timeout override in seconds, or ``None``."""
+    raw = _env(AZURE_OPENAI_TIMEOUT_SECONDS_ENV)
+    if raw is None:
+        return None
+    try:
+        timeout = float(raw)
+    except ValueError:
+        return None
+    return timeout if timeout > 0 else None
 
 
 def get_obs_endpoint() -> str | None:

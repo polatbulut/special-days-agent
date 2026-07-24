@@ -300,7 +300,8 @@ estimate attendance from the event facts (EventsEye carries no headcount).
   like **gpt-5.1** need a preview version, e.g. `2024-12-01-preview`). A generous
   `max_completion_tokens` (default 16384, override with
   `AZURE_OPENAI_MAX_COMPLETION_TOKENS`) is sent so reasoning models don't return
-  empty content.
+  empty content. For long backfills or slower workbench egress, raise
+  `AZURE_OPENAI_TIMEOUT_SECONDS` above the default 60 seconds.
 
 If you run this on a corporate or external workbench that injects its own TLS
 certificate chain, keep that CA in the host trust store or export
@@ -318,7 +319,8 @@ as long as the host or those env vars trust them.
 > the run. Two knobs keep replies *usable* rather than fallen-back: keep
 > `--concurrency` under the deployment's rate limit (429s) and give reasoning
 > models enough `AZURE_OPENAI_MAX_COMPLETION_TOKENS` (an exhausted budget returns
-> empty content, which then falls back).
+> empty content, which then falls back). On slower workbench runs, increasing
+> `AZURE_OPENAI_TIMEOUT_SECONDS` also helps avoid per-record timeout fallbacks.
 
 All LLM backends share one OpenAI-compatible client
 ([`special_days/gateways.py`](special_days/gateways.py)); pick the model with

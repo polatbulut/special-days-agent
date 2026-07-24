@@ -100,6 +100,30 @@ class ObsSecretKeyTest(unittest.TestCase):
         self.assertIsNone(config.get_obs_secret_key())
 
 
+class AzureTimeoutTest(unittest.TestCase):
+    def setUp(self):
+        self._saved = os.environ.get(config.AZURE_OPENAI_TIMEOUT_SECONDS_ENV)
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        if self._saved is None:
+            os.environ.pop(config.AZURE_OPENAI_TIMEOUT_SECONDS_ENV, None)
+        else:
+            os.environ[config.AZURE_OPENAI_TIMEOUT_SECONDS_ENV] = self._saved
+
+    def test_returns_float_when_set(self):
+        os.environ[config.AZURE_OPENAI_TIMEOUT_SECONDS_ENV] = "180"
+        self.assertEqual(config.get_azure_timeout_seconds(), 180.0)
+
+    def test_returns_none_when_unset_or_invalid(self):
+        os.environ.pop(config.AZURE_OPENAI_TIMEOUT_SECONDS_ENV, None)
+        self.assertIsNone(config.get_azure_timeout_seconds())
+        os.environ[config.AZURE_OPENAI_TIMEOUT_SECONDS_ENV] = "oops"
+        self.assertIsNone(config.get_azure_timeout_seconds())
+        os.environ[config.AZURE_OPENAI_TIMEOUT_SECONDS_ENV] = "0"
+        self.assertIsNone(config.get_azure_timeout_seconds())
+
+
 class EventseyeEnabledTest(unittest.TestCase):
     def setUp(self):
         self._saved = os.environ.get(config.EVENTSEYE_ENABLED_ENV)

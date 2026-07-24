@@ -101,6 +101,10 @@ class AzureGatewayTest(unittest.TestCase):
         gw = gateways.azure_gateway("https://x", "dep", "k", max_completion_tokens=512)
         self.assertEqual(gw.max_completion_tokens, 512)
 
+    def test_timeout_override(self):
+        gw = gateways.azure_gateway("https://x", "dep", "k", timeout=180.0)
+        self.assertEqual(gw.timeout, 180.0)
+
     def test_requires_endpoint_deployment_and_key(self):
         with self.assertRaises(ValueError):
             gateways.azure_gateway(None, "dep", "k")
@@ -121,6 +125,14 @@ class MakeGatewayTest(unittest.TestCase):
         )
         self.assertEqual(azure.auth, "api-key")
         self.assertIn("/openai/deployments/dep/", azure.url)
+        azure = gateways.make_gateway(
+            "azure",
+            azure_endpoint="https://x.openai.azure.com",
+            azure_api_key="k",
+            azure_timeout=180.0,
+            model="dep",
+        )
+        self.assertEqual(azure.timeout, 180.0)
         with self.assertRaises(ValueError):
             gateways.make_gateway("bogus")
 

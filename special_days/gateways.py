@@ -15,6 +15,7 @@ from .http_client import post_json
 DEFAULT_OPENAI_BASE_URL = "https://api.openai.com/v1"
 DEFAULT_OPENAI_MODEL = "gpt-5-mini"
 DEFAULT_AZURE_API_VERSION = "2024-10-21"
+DEFAULT_CHAT_TIMEOUT_SECONDS = 60.0
 # Generous output budget for Azure reasoning models (e.g. gpt-5.1): too small a
 # value lets reasoning consume it all and return empty content.
 DEFAULT_AZURE_MAX_COMPLETION_TOKENS = 16384
@@ -31,7 +32,7 @@ class ChatGateway:
         *,
         auth: str = "bearer",
         max_completion_tokens: int | None = None,
-        timeout: float = 60.0,
+        timeout: float = DEFAULT_CHAT_TIMEOUT_SECONDS,
     ):
         self.url = url  # the full chat-completions URL (incl. any query string)
         self.model = model
@@ -79,6 +80,7 @@ def azure_gateway(
     api_key: str | None,
     api_version: str | None = None,
     max_completion_tokens: int | None = None,
+    timeout: float | None = None,
 ) -> ChatGateway:
     """Azure OpenAI: URL carries the deployment + api-version; auth via api-key.
 
@@ -105,6 +107,7 @@ def azure_gateway(
         api_key=api_key,
         auth="api-key",
         max_completion_tokens=max_completion_tokens or DEFAULT_AZURE_MAX_COMPLETION_TOKENS,
+        timeout=timeout if timeout is not None else DEFAULT_CHAT_TIMEOUT_SECONDS,
     )
 
 
@@ -118,6 +121,7 @@ def make_gateway(
     azure_api_key: str | None = None,
     azure_api_version: str | None = None,
     azure_max_completion_tokens: int | None = None,
+    azure_timeout: float | None = None,
     model: str | None = None,
 ) -> ChatGateway:
     """Build the gateway for ``name`` (``openai``, ``vllm`` or ``azure``)."""
@@ -132,5 +136,6 @@ def make_gateway(
             azure_api_key,
             api_version=azure_api_version,
             max_completion_tokens=azure_max_completion_tokens,
+            timeout=azure_timeout,
         )
     raise ValueError(f"Unknown gateway: {name!r}")
