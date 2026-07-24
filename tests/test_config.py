@@ -100,6 +100,56 @@ class ObsSecretKeyTest(unittest.TestCase):
         self.assertIsNone(config.get_obs_secret_key())
 
 
+class ObsEndpointStyleTest(unittest.TestCase):
+    def setUp(self):
+        self._saved_path_style = os.environ.get(config.OBS_PATH_STYLE_ENV)
+        self._saved_is_cname = os.environ.get(config.OBS_IS_CNAME_ENV)
+        self._saved_verify_ssl = os.environ.get(config.OBS_VERIFY_SSL_ENV)
+        self.addCleanup(self._restore)
+
+    def _restore(self):
+        if self._saved_path_style is None:
+            os.environ.pop(config.OBS_PATH_STYLE_ENV, None)
+        else:
+            os.environ[config.OBS_PATH_STYLE_ENV] = self._saved_path_style
+        if self._saved_is_cname is None:
+            os.environ.pop(config.OBS_IS_CNAME_ENV, None)
+        else:
+            os.environ[config.OBS_IS_CNAME_ENV] = self._saved_is_cname
+        if self._saved_verify_ssl is None:
+            os.environ.pop(config.OBS_VERIFY_SSL_ENV, None)
+        else:
+            os.environ[config.OBS_VERIFY_SSL_ENV] = self._saved_verify_ssl
+
+    def test_path_style_can_be_true_false_or_auto(self):
+        os.environ.pop(config.OBS_PATH_STYLE_ENV, None)
+        self.assertIsNone(config.get_obs_path_style())
+        os.environ[config.OBS_PATH_STYLE_ENV] = "1"
+        self.assertTrue(config.get_obs_path_style())
+        os.environ[config.OBS_PATH_STYLE_ENV] = "false"
+        self.assertFalse(config.get_obs_path_style())
+        os.environ[config.OBS_PATH_STYLE_ENV] = "oops"
+        self.assertIsNone(config.get_obs_path_style())
+
+    def test_is_cname_is_truthy_only(self):
+        os.environ.pop(config.OBS_IS_CNAME_ENV, None)
+        self.assertFalse(config.get_obs_is_cname())
+        os.environ[config.OBS_IS_CNAME_ENV] = "yes"
+        self.assertTrue(config.get_obs_is_cname())
+        os.environ[config.OBS_IS_CNAME_ENV] = "0"
+        self.assertFalse(config.get_obs_is_cname())
+
+    def test_verify_ssl_can_be_true_false_or_auto(self):
+        os.environ.pop(config.OBS_VERIFY_SSL_ENV, None)
+        self.assertIsNone(config.get_obs_verify_ssl())
+        os.environ[config.OBS_VERIFY_SSL_ENV] = "1"
+        self.assertTrue(config.get_obs_verify_ssl())
+        os.environ[config.OBS_VERIFY_SSL_ENV] = "false"
+        self.assertFalse(config.get_obs_verify_ssl())
+        os.environ[config.OBS_VERIFY_SSL_ENV] = "maybe"
+        self.assertIsNone(config.get_obs_verify_ssl())
+
+
 class AzureTimeoutTest(unittest.TestCase):
     def setUp(self):
         self._saved = os.environ.get(config.AZURE_OPENAI_TIMEOUT_SECONDS_ENV)

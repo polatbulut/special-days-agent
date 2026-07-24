@@ -2,7 +2,9 @@
 #   python3 -m venv .venv && . .venv/bin/activate && pip install -r requirements.txt
 openpyxl>=3.1,<4
 certifi>=2024.0  # CA bundle so HTTPS works without system certs (macOS/Homebrew Python)
-# The OBS sink (--obs, special_days/sinks/obs.py) — imported lazily, only needed
-# when writing to OBS. pyarrow encodes Parquet; esdk-obs-python uploads it.
+# The object-store sink (--obs, special_days/sinks/obs.py) — imported lazily, only
+# needed when writing to storage. THY internal gateways use boto3's S3-compatible
+# client; official Huawei OBS endpoints can still use the OBS SDK.
 pyarrow>=14
+boto3>=1.34
 esdk-obs-python>=3.22

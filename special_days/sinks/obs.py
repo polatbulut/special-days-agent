@@ -1,8 +1,10 @@
-"""Write the collected feed to Huawei OBS as Parquet — no Spark.
+"""Write the collected feed to object storage as Parquet — no Spark.
 
 Builds the rows in memory, encodes them as Parquet with ``pyarrow``, and uploads
-two objects to OBS with the OBS SDK (``esdk-obs-python``); consumers read them by
-path. Runs anywhere with network access to OBS (a terminal, a container, cron)::
+two objects to storage; official Huawei OBS endpoints use the OBS SDK and THY's
+internal gateways use a plain S3-compatible ``boto3`` client, matching the other
+forecasting repos. Consumers read the objects by path. Runs anywhere with network
+access to the object store (a terminal, a container, cron)::
 
     <location>/special_days_raw/data.parquet       span grain (one row per date)
     <location>/special_days_features/data.parquet   day x airport feature grain
@@ -10,8 +12,8 @@ path. Runs anywhere with network access to OBS (a terminal, a container, cron)::
 National holidays have no single airport, so feature rows keep ``airport = NULL``
 (country populated) rather than being dropped. Each object is a single fixed key,
 overwritten each run (idempotent). Credentials come from the environment (the
-``OBS_*`` vars in ``.env.example``), never hardcoded; ``pyarrow`` and the OBS SDK
-are imported lazily, so the pure-Python row builders work without either.
+``OBS_*`` vars in ``.env.example``), never hardcoded; ``pyarrow`` and the storage
+clients are imported lazily, so the pure-Python row builders work without either.
 """
 
 from __future__ import annotations
@@ -19,9 +21,11 @@ from __future__ import annotations
 import hashlib
 import io
 import json
+import logging
 import uuid
 from collections import OrderedDict
 from datetime import date, datetime, timedelta, timezone
+from types import SimpleNamespace
 from typing import Callable, Iterable
 
 from ..models import SpecialDate
@@ -30,6 +34,8 @@ DEFAULT_LOCATION = "obs://lakehouse-dev/special_events"
 DEFAULT_RAW_TABLE = "special_days_raw"
 DEFAULT_FEATURE_TABLE = "special_days_features"
 DEFAULT_OBJECT_NAME = "data.parquet"
+
+logger = logging.getLogger(__name__)
 
 # Column order shared by the row builders and the Parquet schemas. The row tuples
 # are positional, so these orders must stay in lock-step with ``_arrow_schemas``.
@@ -268,24 +274,132 @@ def _object_key(prefix: str, table: str, object_name: str) -> str:
     return "/".join(part for part in (prefix, table, object_name) if part)
 
 
-def _obs_client(endpoint: str, access_key: str, secret_key: str):
-    """Construct an OBS SDK client; prepend ``https://`` if the endpoint has no scheme."""
-    from obs import ObsClient  # lazy: only needed when actually uploading
+def _server_host(server: str) -> str:
+    return server.split("://", 1)[-1].split("/", 1)[0].lower()
+
+
+def _is_official_obs_endpoint(server: str) -> bool:
+    host = _server_host(server)
+    return host.startswith("obs.") or ".myhuaweicloud." in host
+
+
+def _default_path_style(server: str, *, is_cname: bool) -> bool:
+    """Use path-style for non-standard/internal endpoints unless CNAME mode is set."""
+    if is_cname:
+        return False
+    host = _server_host(server)
+    return not (host.startswith("obs.") or ".myhuaweicloud." in host)
+
+
+class _S3CompatClient:
+    """Small adapter so boto3-backed clients look like the OBS SDK to callers."""
+
+    def __init__(self, client):
+        self._client = client
+
+    def putContent(self, bucket: str, key: str, content: bytes | None = None):
+        self._client.put_object(Bucket=bucket, Key=key, Body=content)
+        return SimpleNamespace(status=200, errorCode=None, errorMessage=None)
+
+    def close(self) -> None:
+        close = getattr(self._client, "close", None)
+        if callable(close):
+            close()
+
+
+def _obs_client(
+    endpoint: str,
+    access_key: str,
+    secret_key: str,
+    *,
+    path_style: bool | None = None,
+    is_cname: bool = False,
+    verify_ssl: bool | None = None,
+):
+    """Construct the storage client for the chosen endpoint.
+
+    THY's internal gateways behave like generic S3-compatible object storage and
+    the surrounding repos talk to them through ``boto3.client('s3', ...)`` with
+    ``verify=False``. Official Huawei OBS endpoints keep using the OBS SDK.
+    """
 
     server = endpoint if "://" in endpoint else f"https://{endpoint}"
-    return ObsClient(access_key_id=access_key, secret_access_key=secret_key, server=server)
+    if not _is_official_obs_endpoint(server):
+        try:
+            import boto3  # lazy: only needed when actually uploading
+        except Exception as exc:  # pragma: no cover - depends on runtime env
+            raise RuntimeError(
+                "boto3 is required for non-official OBS/S3 endpoints; install requirements.txt"
+            ) from exc
+
+        verify = False if verify_ssl is None else verify_ssl
+        logger.info("Storage client server=%s backend=s3-compatible verify_ssl=%s", server, verify)
+        return _S3CompatClient(
+            boto3.client(
+                "s3",
+                endpoint_url=server,
+                aws_access_key_id=access_key,
+                aws_secret_access_key=secret_key,
+                verify=verify,
+            )
+        )
+
+    from obs import ObsClient  # lazy: only needed when actually uploading
+
+    if is_cname:
+        path_style = False
+    elif path_style is None:
+        path_style = _default_path_style(server, is_cname=is_cname)
+
+    logger.info(
+        "OBS client server=%s addressing=%s",
+        server,
+        "cname" if is_cname else ("path-style" if path_style else "virtual-host"),
+    )
+    return ObsClient(
+        access_key_id=access_key,
+        secret_access_key=secret_key,
+        server=server,
+        path_style=path_style,
+        is_cname=is_cname,
+    )
+
+
+def _boto_error(exc: Exception) -> tuple[int | None, str | None, str]:
+    response = getattr(exc, "response", None) or {}
+    metadata = response.get("ResponseMetadata", {}) if isinstance(response, dict) else {}
+    error = response.get("Error", {}) if isinstance(response, dict) else {}
+    status = metadata.get("HTTPStatusCode")
+    code = error.get("Code") or None
+    message = error.get("Message") or str(exc)
+    return status, code, message
 
 
 def _put(client, bucket: str, key: str, content: bytes) -> None:
     """Upload ``content`` to ``bucket/key`` and raise on a non-2xx OBS response."""
-    resp = client.putContent(bucket, key, content=content)
+    try:
+        resp = client.putContent(bucket, key, content=content)
+    except Exception as exc:  # noqa: BLE001 - unify boto3/SDK failures for callers
+        status, code, message = _boto_error(exc)
+        hint = ""
+        if code == "SignatureDoesNotMatch":
+            hint = (
+                " Hint: verify OBS_ENDPOINT matches the working S3-compatible gateway, "
+                "and that OBS_ACCESS_KEY / OBS_SECRET_KEY belong to that endpoint."
+            )
+        raise RuntimeError(
+            f"Object-store upload failed for {bucket}/{key}: status={status} "
+            f"code={code} message={message}{hint}"
+        ) from exc
+
     status = getattr(resp, "status", None)
     if status is not None and status >= 300:
         hint = ""
         if getattr(resp, "errorCode", None) == "SignatureDoesNotMatch":
             hint = (
                 " Hint: verify OBS_ENDPOINT points at the correct OBS service/region "
-                "and that OBS_ACCESS_KEY / OBS_SECRET_KEY do not contain surrounding whitespace."
+                "and that OBS_ACCESS_KEY / OBS_SECRET_KEY do not contain surrounding whitespace. "
+                "For internal/custom gateways, try OBS_PATH_STYLE=1 or OBS_IS_CNAME=1."
             )
         raise RuntimeError(
             f"OBS putContent failed for {bucket}/{key}: status={status} "
@@ -306,6 +420,9 @@ def write(
     object_name: str = DEFAULT_OBJECT_NAME,
     run_id: str | None = None,
     load_ts: datetime | None = None,
+    path_style: bool | None = None,
+    is_cname: bool = False,
+    verify_ssl: bool | None = None,
     client: object | None = None,
 ) -> str:
     """Encode the two datasets as Parquet and upload them to OBS; return the run id.
@@ -328,11 +445,18 @@ def write(
 
     owns_client = client is None
     if owns_client:
-        client = _obs_client(endpoint, access_key, secret_key)
+        client = _obs_client(
+            endpoint,
+            access_key,
+            secret_key,
+            path_style=path_style,
+            is_cname=is_cname,
+            verify_ssl=verify_ssl,
+        )
     try:
         _put(client, bucket, _object_key(prefix, raw_table, object_name), raw_bytes)
         _put(client, bucket, _object_key(prefix, feature_table, object_name), feature_bytes)
     finally:
-        if owns_client:
+        if owns_client and hasattr(client, "close"):
             client.close()
     return run_id

@@ -24,6 +24,9 @@ AZURE_OPENAI_TIMEOUT_SECONDS_ENV = "AZURE_OPENAI_TIMEOUT_SECONDS"
 OBS_ENDPOINT_ENV = "OBS_ENDPOINT"
 OBS_ACCESS_KEY_ENV = "OBS_ACCESS_KEY"
 OBS_SECRET_KEY_ENV = "OBS_SECRET_KEY"
+OBS_PATH_STYLE_ENV = "OBS_PATH_STYLE"
+OBS_IS_CNAME_ENV = "OBS_IS_CNAME"
+OBS_VERIFY_SSL_ENV = "OBS_VERIFY_SSL"
 
 # Default destination markets for the international agent. Kept short on
 # purpose — override with `--countries` on the CLI.
@@ -70,6 +73,7 @@ def get_football_api_key() -> str | None:
 
 
 _TRUTHY = {"1", "true", "yes", "on"}
+_FALSY = {"0", "false", "no", "off"}
 
 
 def eventseye_enabled() -> bool:
@@ -95,6 +99,18 @@ def seminars_enabled() -> bool:
 def _env(name: str) -> str | None:
     value = os.environ.get(name, "").strip()
     return value or None
+
+
+def _env_bool(name: str) -> bool | None:
+    value = _env(name)
+    if value is None:
+        return None
+    lowered = value.lower()
+    if lowered in _TRUTHY:
+        return True
+    if lowered in _FALSY:
+        return False
+    return None
 
 
 def get_openai_key() -> str | None:
@@ -178,3 +194,22 @@ def get_obs_secret_key() -> str | None:
     request signing to fail with ``SignatureDoesNotMatch``.
     """
     return _env(OBS_SECRET_KEY_ENV)
+
+
+def get_obs_path_style() -> bool | None:
+    """Return the OBS path-style override, or ``None`` to auto-detect.
+
+    Internal gateways and S3-compatible reverse proxies often need path-style
+    signing (``host/bucket/key``) instead of the OBS SDK's default host style.
+    """
+    return _env_bool(OBS_PATH_STYLE_ENV)
+
+
+def get_obs_is_cname() -> bool:
+    """Return whether ``OBS_ENDPOINT`` is a bucket-bound custom domain."""
+    return _env_bool(OBS_IS_CNAME_ENV) is True
+
+
+def get_obs_verify_ssl() -> bool | None:
+    """Return the OBS/S3 TLS-verify override, or ``None`` for the backend default."""
+    return _env_bool(OBS_VERIFY_SSL_ENV)

@@ -7,8 +7,11 @@ needed — a fake client captures the uploaded objects.
 
 import io
 import json
+import sys
+import types
 import unittest
 from datetime import date, datetime, timezone
+from unittest import mock
 
 from special_days.models import SpecialDate
 from special_days.sinks import obs
@@ -195,6 +198,9 @@ class _FakeObsClient:
         self.puts = {}
         self.closed = False
 
+    def put_object(self, Bucket=None, Key=None, Body=None):
+        self.puts[(Bucket, Key)] = Body
+
     def putContent(self, bucket, key, content=None):
         self.puts[(bucket, key)] = content
         return _FakeResp()
@@ -214,6 +220,52 @@ class PutErrorTest(unittest.TestCase):
         message = str(exc.exception)
         self.assertIn("SignatureDoesNotMatch", message)
         self.assertIn("OBS_ACCESS_KEY / OBS_SECRET_KEY", message)
+
+
+class ObsClientConfigTest(unittest.TestCase):
+    def test_internal_endpoint_uses_boto3_like_explf_repos(self):
+        raw_client = mock.Mock()
+        ctor = mock.Mock(return_value=raw_client)
+        with mock.patch.dict(sys.modules, {"boto3": types.SimpleNamespace(client=ctor)}):
+            out = obs._obs_client("bigdata-dev.obs", "ak", "sk")
+        self.assertIsInstance(out, obs._S3CompatClient)
+        ctor.assert_called_once_with(
+            "s3",
+            endpoint_url="https://bigdata-dev.obs",
+            aws_access_key_id="ak",
+            aws_secret_access_key="sk",
+            verify=False,
+        )
+        out.putContent("lakehouse-dev", "special_events/data.parquet", b"x")
+        raw_client.put_object.assert_called_once_with(
+            Bucket="lakehouse-dev",
+            Key="special_events/data.parquet",
+            Body=b"x",
+        )
+
+    def test_official_obs_endpoint_keeps_virtual_host_style(self):
+        ctor = mock.Mock(return_value="client")
+        with mock.patch.dict(sys.modules, {"obs": types.SimpleNamespace(ObsClient=ctor)}):
+            obs._obs_client("https://obs.cn-north-4.myhuaweicloud.com", "ak", "sk")
+        ctor.assert_called_once_with(
+            access_key_id="ak",
+            secret_access_key="sk",
+            server="https://obs.cn-north-4.myhuaweicloud.com",
+            path_style=False,
+            is_cname=False,
+        )
+
+    def test_internal_endpoint_respects_verify_override(self):
+        ctor = mock.Mock(return_value=mock.Mock())
+        with mock.patch.dict(sys.modules, {"boto3": types.SimpleNamespace(client=ctor)}):
+            obs._obs_client("files.example.com", "ak", "sk", verify_ssl=True)
+        ctor.assert_called_once_with(
+            "s3",
+            endpoint_url="https://files.example.com",
+            aws_access_key_id="ak",
+            aws_secret_access_key="sk",
+            verify=True,
+        )
 
 
 @unittest.skipUnless(_HAS_PYARROW, "pyarrow not installed")
