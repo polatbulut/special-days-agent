@@ -12,6 +12,9 @@ env/
 
 # Environment / secrets
 .env
+# A filled-in OpenShift Secret must never be committed (template is tracked).
+deploy/openshift/*secret*.yaml
+!deploy/openshift/secret.example.yaml
 
 # Tooling caches
 .pytest_cache/

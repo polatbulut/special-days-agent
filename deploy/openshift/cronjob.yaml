@@ -1,0 +1,69 @@
+# Scheduled run of the special-days-agent: scrape special dates, enrich, and write
+# the two Parquet objects to OBS (obs://lakehouse-dev/special_events).
+#
+# National holidays are always collected (no keys needed). Event sources are
+# opt-in and produce nothing unless their keys/flags are set, so with this
+# manifest as-is a run is holidays-only. To include events, add to the Secret:
+#   TICKETMASTER_API_KEY, FOOTBALL_API_KEY
+# and to the ConfigMap:  EVENTSEYE_ENABLED: "1"  and/or  SEMINARS_ENABLED: "1"
+#
+# The image ENTRYPOINT is `python -m special_days`, so `args` below are the CLI
+# flags (they replace the Dockerfile CMD of ["--help"]). Effective command:
+#   python -m special_days --obs --months 12 --verbose
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: special-days-agent
+  labels:
+    app: special-days-agent
+spec:
+  # Weekly, Monday 03:00 Europe/Istanbul. Turkey is UTC+3 year-round (no DST),
+  # so if your cluster is older than OCP 4.12 (no `timeZone` support), delete the
+  # timeZone line and use the UTC-equivalent schedule "0 0 * * 1".
+  schedule: "0 3 * * 1"
+  timeZone: "Europe/Istanbul"
+  # Never let a slow run overlap the next fire; skip a fire rather than pile up.
+  concurrencyPolicy: Forbid
+  startingDeadlineSeconds: 600
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 2            # retry a failed run up to twice
+      activeDeadlineSeconds: 3600  # hard cap a run at 1h, then fail it
+      template:
+        metadata:
+          labels:
+            app: special-days-agent
+        spec:
+          restartPolicy: Never
+          containers:
+            - name: agent
+              # TODO: set this to the image you push/build.
+              image: REPLACE_WITH_IMAGE_REF
+              imagePullPolicy: IfNotPresent
+              args: ["--obs", "--months", "12", "--verbose"]
+              envFrom:
+                - configMapRef:
+                    name: special-days-agent-config
+                - secretRef:
+                    name: special-days-obs-credentials
+              resources:
+                requests:
+                  cpu: "100m"
+                  memory: "256Mi"
+                limits:
+                  cpu: "500m"
+                  memory: "512Mi"
+              # Restricted-SCC-compliant hardening. runAsNonRoot relies on
+              # OpenShift assigning a non-root UID from the namespace range
+              # (default restricted-v2 SCC does this). On a cluster/SCC that
+              # does NOT inject a UID, either drop runAsNonRoot or add a USER
+              # to the image.
+              securityContext:
+                allowPrivilegeEscalation: false
+                runAsNonRoot: true
+                capabilities:
+                  drop: ["ALL"]
+                seccompProfile:
+                  type: RuntimeDefault

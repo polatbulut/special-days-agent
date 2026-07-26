@@ -1,0 +1,20 @@
+# Non-secret runtime config for the special-days-agent CronJob.
+# Safe to commit: contains no credentials. The AK/SK live in a Secret
+# (see secret.example.yaml) so they never land in git, the image, or a ConfigMap.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: special-days-agent-config
+  labels:
+    app: special-days-agent
+data:
+  # OBS target (dev lakehouse). The CLI reads SPECIAL_DAYS_LOCATION when
+  # --obs-location is not passed, so no CLI flag for the bucket is needed.
+  OBS_ENDPOINT: "bigdata-dev.obs"
+  SPECIAL_DAYS_LOCATION: "obs://lakehouse-dev/special_events"
+  # Runtime hygiene for an arbitrary-UID (OpenShift restricted SCC) container:
+  # HOME points at a writable dir; unbuffered logs flush immediately with --verbose;
+  # skip writing .pyc into read-only site-packages.
+  HOME: "/tmp"
+  PYTHONUNBUFFERED: "1"
+  PYTHONDONTWRITEBYTECODE: "1"
