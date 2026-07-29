@@ -34,10 +34,7 @@ from .config import (
     get_azure_timeout_seconds,
     get_obs_access_key,
     get_obs_endpoint,
-    get_obs_is_cname,
-    get_obs_path_style,
     get_obs_secret_key,
-    get_obs_verify_ssl,
     get_openai_key,
     get_vllm_api_key,
     get_vllm_base_url,
@@ -323,9 +320,6 @@ def main(argv: list[str] | None = None) -> int:
             endpoint=get_obs_endpoint(),
             access_key=get_obs_access_key(),
             secret_key=get_obs_secret_key(),
-            path_style=get_obs_path_style(),
-            is_cname=get_obs_is_cname(),
-            verify_ssl=get_obs_verify_ssl(),
             location=location,
         )
         print(f"Wrote {len(rows)} special date(s) to OBS {location} (run_id={run_id})")

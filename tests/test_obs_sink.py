@@ -223,69 +223,49 @@ class PutErrorTest(unittest.TestCase):
 
 
 class ObsClientConfigTest(unittest.TestCase):
-    def test_internal_endpoint_uses_boto3_like_explf_repos(self):
-        raw_client = mock.Mock()
-        ctor = mock.Mock(return_value=raw_client)
-        with mock.patch.dict(sys.modules, {"boto3": types.SimpleNamespace(client=ctor)}):
-            with mock.patch("botocore.config.Config", side_effect=lambda **kw: kw) as boto_cfg:
-                out = obs._obs_client("bigdata-dev.obs", "ak", "sk")
-        self.assertIsInstance(out, obs._S3CompatClient)
-        boto_cfg.assert_called_once_with(s3={"addressing_style": "path"})
+    def test_thy_internal_endpoint_uses_thy_s3_service(self):
+        service = mock.Mock()
+        ctor = mock.Mock(return_value=service)
+        fake_thy_pkg = types.ModuleType("thy")
+        fake_thy_s3 = types.ModuleType("thy.s3")
+        fake_thy_s3.ThyS3Service = ctor
+        fake_thy_pkg.s3 = fake_thy_s3
+        with mock.patch.dict(sys.modules, {"thy": fake_thy_pkg, "thy.s3": fake_thy_s3}):
+            out = obs._obs_client("bigdata-dev.obs.thy.com", "ak", "sk", bucket_name="lakehouse-dev")
+        self.assertIsInstance(out, obs._ThyS3CompatClient)
         ctor.assert_called_once_with(
-            "s3",
-            endpoint_url="https://bigdata-dev.obs",
-            aws_access_key_id="ak",
-            aws_secret_access_key="sk",
-            verify=False,
-            config={"s3": {"addressing_style": "path"}},
+            access_key="ak",
+            secret_key="sk",
+            bucket_name="lakehouse-dev",
+            endpoint_url="https://bigdata-dev.obs.thy.com",
         )
         out.putContent("lakehouse-dev", "special_events/data.parquet", b"x")
-        raw_client.put_object.assert_called_once_with(
-            Bucket="lakehouse-dev",
-            Key="special_events/data.parquet",
-            Body=b"x",
+        service.save_memory_file_to_s3.assert_called_once_with(
+            b"x",
+            "special_events/data.parquet",
         )
 
     def test_official_obs_endpoint_keeps_virtual_host_style(self):
         ctor = mock.Mock(return_value="client")
         with mock.patch.dict(sys.modules, {"obs": types.SimpleNamespace(ObsClient=ctor)}):
-            obs._obs_client("https://obs.cn-north-4.myhuaweicloud.com", "ak", "sk")
+            obs._obs_client("https://obs.cn-north-4.myhuaweicloud.com", "ak", "sk", bucket_name="bucket")
         ctor.assert_called_once_with(
             access_key_id="ak",
             secret_access_key="sk",
             server="https://obs.cn-north-4.myhuaweicloud.com",
-            path_style=False,
-            is_cname=False,
         )
 
-    def test_internal_endpoint_respects_verify_override(self):
+    def test_non_thy_non_official_endpoint_falls_back_to_boto3(self):
         ctor = mock.Mock(return_value=mock.Mock())
         with mock.patch.dict(sys.modules, {"boto3": types.SimpleNamespace(client=ctor)}):
-            with mock.patch("botocore.config.Config", side_effect=lambda **kw: kw) as boto_cfg:
-                obs._obs_client("files.example.com", "ak", "sk", verify_ssl=True)
-        boto_cfg.assert_called_once_with(s3={"addressing_style": "path"})
-        ctor.assert_called_once_with(
-            "s3",
-            endpoint_url="https://files.example.com",
-            aws_access_key_id="ak",
-            aws_secret_access_key="sk",
-            verify=True,
-            config={"s3": {"addressing_style": "path"}},
-        )
-
-    def test_internal_endpoint_can_force_virtual_host(self):
-        ctor = mock.Mock(return_value=mock.Mock())
-        with mock.patch.dict(sys.modules, {"boto3": types.SimpleNamespace(client=ctor)}):
-            with mock.patch("botocore.config.Config", side_effect=lambda **kw: kw) as boto_cfg:
-                obs._obs_client("files.example.com", "ak", "sk", path_style=False)
-        boto_cfg.assert_called_once_with(s3={"addressing_style": "virtual"})
+            out = obs._obs_client("files.example.com", "ak", "sk", bucket_name="bucket")
+        self.assertIsInstance(out, obs._S3CompatClient)
         ctor.assert_called_once_with(
             "s3",
             endpoint_url="https://files.example.com",
             aws_access_key_id="ak",
             aws_secret_access_key="sk",
             verify=False,
-            config={"s3": {"addressing_style": "virtual"}},
         )
 
 

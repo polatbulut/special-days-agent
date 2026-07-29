@@ -155,38 +155,35 @@ The sink is [`special_days/sinks/obs.py`](special_days/sinks/obs.py) (pure-Pytho
 row builders + a lazily-imported pyarrow/OBS writer). Run it after `git pull`:
 
 ```bash
-pip install -r requirements.txt          # includes pyarrow + esdk-obs-python
+pip install -r requirements.txt          # includes pyarrow, boto3 and esdk-obs-python
 python -m special_days --obs --months 12
 ```
 
 Consumers (`explf`, `expectedrevenue`) read the datasets **by path**, e.g.
 `obs://lakehouse-dev/special_events/special_days_features/`.
 
-**Storage & access (OBS).** Bucket `lakehouse-dev`, endpoint `bigdata-dev.obs`; a
+**Storage & access (OBS).** Bucket `lakehouse-dev`, endpoint `bigdata-dev.obs.thy.com`; a
 write-scoped service account can **read all of `lakehouse-dev` but write only under
 `/special_events`**. `--obs` writes both objects inside the location, so nothing
 lands outside the writable prefix. Credentials come from the environment (a
 git-ignored `.env`, **never committed**):
 
 ```
-OBS_ENDPOINT=bigdata-dev.obs
+OBS_ENDPOINT=bigdata-dev.obs.thy.com
 OBS_ACCESS_KEY=<AK>
 OBS_SECRET_KEY=<SK>
 ```
 
-For THY-style internal gateways, the sink now follows the same S3-compatible
-pattern used in the `explf` and `expectedrevenue` repos: a plain `boto3` S3 client
-against `endpoint_url`, with TLS verification disabled by default on non-official
-endpoints. You can override that with `OBS_VERIFY_SSL=1` if the gateway has a
-trusted certificate chain.
+For THY internal gateways, the sink now uses `thy.s3.ThyS3Service`, matching the
+working connection pattern verified on the THY workbench. Official Huawei OBS
+hosts still use the OBS SDK; a plain `boto3` fallback is kept only for other
+S3-compatible endpoints.
 
 If OBS returns `SignatureDoesNotMatch`, check the basics first: the endpoint must
 match the target OBS service/region, and copied credentials must not contain
 hidden whitespace or trailing newlines. The CLI now strips surrounding whitespace
 from `OBS_SECRET_KEY`, but the actual AK/SK values still need to be the correct
-write-scoped pair for `lakehouse-dev/special_events`. If the endpoint is an
-internal gateway rather than an official Huawei OBS host, this repo now treats it
-as S3-compatible storage instead of forcing the Huawei OBS SDK.
+write-scoped pair for `lakehouse-dev/special_events`.
 
 The target defaults to `obs://lakehouse-dev/special_events`; override with
 `--obs-location obs://bucket/prefix` or `SPECIAL_DAYS_LOCATION`. The rolling window

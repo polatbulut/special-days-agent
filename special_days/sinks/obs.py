@@ -2,9 +2,9 @@
 
 Builds the rows in memory, encodes them as Parquet with ``pyarrow``, and uploads
 two objects to storage; official Huawei OBS endpoints use the OBS SDK and THY's
-internal gateways use a plain S3-compatible ``boto3`` client, matching the other
-forecasting repos. Consumers read the objects by path. Runs anywhere with network
-access to the object store (a terminal, a container, cron)::
+internal gateways use ``thy.s3.ThyS3Service``. A plain ``boto3`` fallback is kept
+for other S3-compatible endpoints. Consumers read the objects by path. Runs
+anywhere with network access to the object store (a terminal, a container, cron)::
 
     <location>/special_days_raw/data.parquet       span grain (one row per date)
     <location>/special_days_features/data.parquet   day x airport feature grain
@@ -283,12 +283,8 @@ def _is_official_obs_endpoint(server: str) -> bool:
     return host.startswith("obs.") or ".myhuaweicloud." in host
 
 
-def _default_path_style(server: str, *, is_cname: bool) -> bool:
-    """Use path-style for non-standard/internal endpoints unless CNAME mode is set."""
-    if is_cname:
-        return False
-    host = _server_host(server)
-    return not (host.startswith("obs.") or ".myhuaweicloud." in host)
+def _is_thy_internal_endpoint(server: str) -> bool:
+    return _server_host(server).endswith(".thy.com")
 
 
 class _S3CompatClient:
@@ -307,73 +303,90 @@ class _S3CompatClient:
             close()
 
 
+class _ThyS3CompatClient:
+    """Adapter around ``thy.s3.ThyS3Service`` for the fixed-bucket write path."""
+
+    def __init__(self, service, bucket_name: str):
+        self._service = service
+        self._bucket_name = bucket_name
+
+    def putContent(self, bucket: str, key: str, content: bytes | None = None):
+        if bucket != self._bucket_name:
+            raise RuntimeError(
+                f"ThyS3Service client configured for bucket {self._bucket_name!r}, got write for {bucket!r}"
+            )
+        self._service.save_memory_file_to_s3(content, key)
+        return SimpleNamespace(status=200, errorCode=None, errorMessage=None)
+
+    def close(self) -> None:
+        return None
+
+
 def _obs_client(
     endpoint: str,
     access_key: str,
     secret_key: str,
     *,
-    path_style: bool | None = None,
-    is_cname: bool = False,
-    verify_ssl: bool | None = None,
+    bucket_name: str,
 ):
     """Construct the storage client for the chosen endpoint.
 
-    THY's internal gateways behave like generic S3-compatible object storage and
-    the surrounding repos talk to them through ``boto3.client('s3', ...)`` with
-    ``verify=False``. Official Huawei OBS endpoints keep using the OBS SDK.
+    THY's internal gateways use ``thy.s3.ThyS3Service`` with an explicit bucket,
+    which matches the working connection pattern verified on the THY workbench.
+    Official Huawei OBS endpoints keep using the OBS SDK. A plain ``boto3``
+    client is retained only as a fallback for other S3-compatible endpoints.
     """
 
     server = endpoint if "://" in endpoint else f"https://{endpoint}"
+    if _is_thy_internal_endpoint(server):
+        try:
+            from thy.s3 import ThyS3Service  # lazy: available on THY workbench/images
+        except Exception as exc:  # pragma: no cover - depends on runtime env
+            raise RuntimeError(
+                "thy.s3.ThyS3Service is required for THY internal object-store endpoints"
+            ) from exc
+
+        logger.info(
+            "Storage client server=%s backend=thy.s3 bucket=%s",
+            server,
+            bucket_name,
+        )
+        return _ThyS3CompatClient(
+            ThyS3Service(
+                access_key=access_key,
+                secret_key=secret_key,
+                bucket_name=bucket_name,
+                endpoint_url=server,
+            ),
+            bucket_name,
+        )
+
     if not _is_official_obs_endpoint(server):
         try:
             import boto3  # lazy: only needed when actually uploading
-            from botocore.config import Config as BotoConfig
         except Exception as exc:  # pragma: no cover - depends on runtime env
             raise RuntimeError(
                 "boto3 is required for non-official OBS/S3 endpoints; install requirements.txt"
             ) from exc
 
-        if is_cname:
-            path_style = False
-        elif path_style is None:
-            path_style = _default_path_style(server, is_cname=is_cname)
-
-        verify = False if verify_ssl is None else verify_ssl
-        logger.info(
-            "Storage client server=%s backend=s3-compatible verify_ssl=%s addressing=%s",
-            server,
-            verify,
-            "path-style" if path_style else "virtual-host",
-        )
+        logger.info("Storage client server=%s backend=s3-compatible verify_ssl=False", server)
         return _S3CompatClient(
             boto3.client(
                 "s3",
                 endpoint_url=server,
                 aws_access_key_id=access_key,
                 aws_secret_access_key=secret_key,
-                verify=verify,
-                config=BotoConfig(s3={"addressing_style": "path" if path_style else "virtual"}),
+                verify=False,
             )
         )
 
     from obs import ObsClient  # lazy: only needed when actually uploading
 
-    if is_cname:
-        path_style = False
-    elif path_style is None:
-        path_style = _default_path_style(server, is_cname=is_cname)
-
-    logger.info(
-        "OBS client server=%s addressing=%s",
-        server,
-        "cname" if is_cname else ("path-style" if path_style else "virtual-host"),
-    )
+    logger.info("OBS client server=%s backend=obs-sdk", server)
     return ObsClient(
         access_key_id=access_key,
         secret_access_key=secret_key,
         server=server,
-        path_style=path_style,
-        is_cname=is_cname,
     )
 
 
@@ -410,8 +423,7 @@ def _put(client, bucket: str, key: str, content: bytes) -> None:
         if getattr(resp, "errorCode", None) == "SignatureDoesNotMatch":
             hint = (
                 " Hint: verify OBS_ENDPOINT points at the correct OBS service/region "
-                "and that OBS_ACCESS_KEY / OBS_SECRET_KEY do not contain surrounding whitespace. "
-                "For internal/custom gateways, try OBS_PATH_STYLE=1 or OBS_IS_CNAME=1."
+                "and that OBS_ACCESS_KEY / OBS_SECRET_KEY do not contain surrounding whitespace."
             )
         raise RuntimeError(
             f"OBS putContent failed for {bucket}/{key}: status={status} "
@@ -432,9 +444,6 @@ def write(
     object_name: str = DEFAULT_OBJECT_NAME,
     run_id: str | None = None,
     load_ts: datetime | None = None,
-    path_style: bool | None = None,
-    is_cname: bool = False,
-    verify_ssl: bool | None = None,
     client: object | None = None,
 ) -> str:
     """Encode the two datasets as Parquet and upload them to OBS; return the run id.
@@ -461,9 +470,7 @@ def write(
             endpoint,
             access_key,
             secret_key,
-            path_style=path_style,
-            is_cname=is_cname,
-            verify_ssl=verify_ssl,
+            bucket_name=bucket,
         )
     try:
         _put(client, bucket, _object_key(prefix, raw_table, object_name), raw_bytes)
