@@ -221,6 +221,19 @@ class PutErrorTest(unittest.TestCase):
         self.assertIn("SignatureDoesNotMatch", message)
         self.assertIn("OBS_ACCESS_KEY / OBS_SECRET_KEY", message)
 
+    def test_thy_s3_service_failure_is_wrapped(self):
+        service = mock.Mock()
+        service.save_memory_file_to_s3.side_effect = RuntimeError("access denied")
+        client = obs._ThyS3CompatClient(service, "lakehouse-dev")
+
+        with self.assertRaises(RuntimeError) as exc:
+            obs._put(client, "lakehouse-dev", "special_events/data.parquet", b"x")
+
+        service.save_memory_file_to_s3.assert_called_once_with(b"x", "special_events/data.parquet")
+        message = str(exc.exception)
+        self.assertIn("Object-store upload failed", message)
+        self.assertIn("access denied", message)
+
 
 class ObsClientConfigTest(unittest.TestCase):
     def test_thy_internal_endpoint_uses_thy_s3_service(self):

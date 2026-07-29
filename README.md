@@ -159,6 +159,11 @@ pip install -r requirements.txt          # includes pyarrow, boto3 and esdk-obs-
 python -m special_days --obs --months 12
 ```
 
+For THY internal endpoints such as `bigdata-dev.obs.thy.com`, the runtime must
+also provide `thy.s3.ThyS3Service`. That package is available on the external
+THY workbench and THY-managed images; a plain local Python environment or the
+stock Dockerfile in this repo does not install it.
+
 Consumers (`explf`, `expectedrevenue`) read the datasets **by path**, e.g.
 `obs://lakehouse-dev/special_events/special_days_features/`.
 

@@ -3,8 +3,9 @@
 openpyxl>=3.1,<4
 certifi>=2024.0  # CA bundle so HTTPS works without system certs (macOS/Homebrew Python)
 # The object-store sink (--obs, special_days/sinks/obs.py) — imported lazily, only
-# needed when writing to storage. THY internal gateways use boto3's S3-compatible
-# client; official Huawei OBS endpoints can still use the OBS SDK.
+# needed when writing to storage. THY internal .thy.com gateways use
+# thy.s3.ThyS3Service; official Huawei OBS endpoints use the OBS SDK; boto3 stays
+# as a fallback for other S3-compatible endpoints.
 pyarrow>=14
 boto3>=1.34
 esdk-obs-python>=3.22
