@@ -13,6 +13,10 @@ It collects a **rolling window** (default: the next 12 months) so a weekly job
 always looks ahead, scores each date for expected demand impact, and maps
 attended events to the nearest airport.
 
+This repository is the Bitbucket-hosted home of the project originally
+developed in `special-days-agent`. The application and package names stay
+`special_days`; only the repository home changed.
+
 ## What it does
 
 Two collector agents share one canonical record, one enrichment pipeline and
@@ -233,14 +237,14 @@ python -m special_days --agent international --countries DE,GB,AE --source holid
 ## Docker
 
 ```bash
-docker build -t special-days-agent .
+docker build -t specialevents-schedule .
 
 # holidays (no key needed)
-docker run --rm special-days-agent --agent turkey --source holidays
+docker run --rm specialevents-schedule --agent turkey --source holidays
 
 # events + Excel: pass the key via --env-file and mount ./out for the file
 mkdir -p out
-docker run --rm --env-file .env -v "$PWD/out:/app/out" special-days-agent \
+docker run --rm --env-file .env -v "$PWD/out:/app/out" specialevents-schedule \
     --agent both --format xlsx -o out/special_days.xlsx
 ```
 

@@ -13,7 +13,8 @@ what to go find in the other two repos.
 
 ## 1. What this project is
 
-`special-days-agent` (this repo) feeds Turkish Airlines Revenue Management's flight-occupancy
+`specialevents-schedule` (this repo; application formerly developed in `special-days-agent`)
+feeds Turkish Airlines Revenue Management's flight-occupancy
 forecasting with "special dates" — holidays, school breaks, concerts, football fixtures, trade
 fairs, business seminars. It collects a **rolling forward window** (default: next 12 months),
 scores each date for expected demand impact, maps events to a nearest airport, and writes two
@@ -218,10 +219,11 @@ the curve out of the regressor, and stratify the baseline by weekday (§6.3).
   committable internal revenue data. Read the LF file from **outside the repo**. If you do add a
   gitignore line, use root-anchored `/data/` — a bare `data/` would also match the tracked
   `special_days/data/` reference JSON.
-- **This repo is PUBLIC on GitHub** (`github.com/polatbulut/special-days-agent`). It already
-  carries internal hostnames (`bigdata-dev.obs`, bucket `lakehouse-dev`) in `README.md`,
-  `.env.example`, `config.py`, `sinks/obs.py` and tests. No credentials are committed. Worth
-  raising with Polat separately; not a blocker for this work.
+- **The original development repo was public on GitHub**
+  (`github.com/polatbulut/special-days-agent`). This Bitbucket repo now carries the same codebase
+  and still includes internal hostnames (`bigdata-dev.obs`, bucket `lakehouse-dev`) in `README.md`,
+  `.env.example`, `config.py`, `sinks/obs.py` and tests. No credentials are committed. Keep it that
+  way if this repo stays private.
 
 ---
 
@@ -478,7 +480,7 @@ Memory of this project records that `explf` **carries hard-coded route/date excl
 lists are a **human-curated, RM-validated answer to "which dates are special"**. Extract them.
 
 Two uses, both better than the LF correlation as a *first* test:
-1. **Validate `special-days-agent` against them directly.** If the agent's blocks don't recover the
+1. **Validate this repository against them directly.** If the agent's blocks don't recover the
    dates RM already hand-excluded, the agent is wrong in a way no LF correlation will reveal
    cleanly. This is a same-day check with no statistics involved.
 2. **They are the incumbent this project must beat.** "Replaces two hand-maintained lists" is a far

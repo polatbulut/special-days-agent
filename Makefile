@@ -4,7 +4,7 @@
 VENV := .venv
 PY := $(VENV)/bin/python
 PIP := $(VENV)/bin/pip
-IMAGE := special-days-agent
+IMAGE := specialevents-schedule
 ARGS ?= --help
 
 .PHONY: venv test run docker-build docker-run clean
