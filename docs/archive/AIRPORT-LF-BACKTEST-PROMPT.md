@@ -1,3 +1,7 @@
+> **ARCHIVED / SUPERSEDED — 2026-08-04.** This prompt described `special_days/airport_lf_backtest_simple.py`, which has been deleted along with `special_days/backtest.py`. It was replaced by a simpler per-event case-study approach (`special_days/case_studies.py`, `docs/case-studies-input.md`) at Polat's request. Nothing below is a live instruction: do **not** build the airport-day correlation workflow it specifies. Kept only as a record of the design that was dropped.
+
+---
+
 # Prompt: rewrite the LF backtest as a simpler airport-specific correlation workflow
 
 Use this prompt when you want a coding agent to build or refine the airport-LF correlation workflow without touching the current `special_days/backtest.py` implementation.

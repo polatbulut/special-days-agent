@@ -1,3 +1,7 @@
+> **ARCHIVED / SUPERSEDED — 2026-08-04.** This document repeatedly instructs a future reader to build the LF backtest / event-study estimator. **Do not.** That design was replaced, at Polat's explicit request on 2026-08-04, by a much simpler per-event case-study approach: he supplies ~10-20 events by hand, and the module (`special_days/case_studies.py`, input format in `docs/case-studies-input.md`, LF extract spec in `docs/lf-extract-spec.md`) plots route-day load factor around each one against a same-weekday baseline, reporting whatever it finds — flat, negative or positive — with no ranking and no significance claim. The two modules this document's plan targeted (`special_days/backtest.py`, `special_days/airport_lf_backtest_simple.py`) have been deleted from the repo. Sections 3-8 in particular ("what to build", "what to go find in the other two repos") are **not** live work items. Read this only for the measured facts and the pipeline description in sections 1-2; the revised plan is `PLAN-v3.md`.
+
+---
+
 # Handoff — LF backtest: correlating special events against historical load-factor spikes
 
 **Status:** designed, not built. No code from this design exists yet.
