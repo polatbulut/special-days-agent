@@ -25,7 +25,15 @@ deploy/openshift/*secret*.yaml
 *.xlsx
 *.docx
 *.doc
-out/
+out/*
+# ...except the hand-filled case-study events template, which is source.
+!out/events.template.csv
+
+# Internal LF / revenue extracts are never source. They belong under out/ (above),
+# and this is the backstop for one landing anywhere else. Already-tracked CSVs in
+# analysis/output/ are unaffected — .gitignore does not apply to tracked files.
+*.csv
+!out/events.template.csv
 
 # Media / archives (demos, not source — keep them out of the repo)
 *.mp4
